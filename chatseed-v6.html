@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ChatSeed v6</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+<style>
+body{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#030712;color:#f3f4f6}
+.user-msg{background:#3b82f6;border-radius:18px 18px 4px 18px}
+.assistant-msg{background:#1f2937;border-radius:18px 18px 18px 4px}
+.prose{max-width:none}
+.prose pre{background:#111827;padding:1rem;border-radius:8px;overflow-x:auto;border:1px solid #374151;position:relative}
+.prose pre:hover .copy-btn{opacity:1}
+.prose code{font-size:.9em;background:#374151;padding:2px 4px;border-radius:4px}
+.prose pre code{background:transparent;padding:0}
+.copy-btn{position:absolute;top:6px;right:6px;opacity:0;transition:opacity .2s;background:#374151;border:1px solid #4b5563;color:#d1d5db;border-radius:6px;padding:4px 8px;font-size:.7rem;cursor:pointer}
+.copy-btn:hover{background:#4b5563;color:white}
+.msg-ts{font-size:.65rem;opacity:.5;margin-top:4px;cursor:default}
+.streaming-cursor::after{content:'\258A';animation:blink .8s step-end infinite;color:#6ee7b7}
+@keyframes blink{50%{opacity:0}}
+.msg-appear{animation:fadeSlideIn .3s ease-out}
+@keyframes fadeSlideIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.token-badge{background:#374151;color:#9ca3af;border-radius:9999px;padding:2px 8px;font-size:.65rem}
+.kbd{display:inline-block;padding:2px 6px;font-size:.7rem;background:#374151;border:1px solid #4b5563;border-radius:4px}
+.step-bar{background:#064e3b;border:1px solid #065f46;border-radius:12px;padding:8px 16px;font-size:.8rem;display:flex;align-items:center;gap:8px;color:#6ee7b7;animation:fadeSlideIn .3s ease-out}
+.step-bar .step-label{color:#d1d5db;flex:1}
+.step-bar .step-count{color:#9ca3af;font-size:.7rem}
+.step-bar.pulse{box-shadow:0 0 12px rgba(5,150,105,.3)}
+.tool-call-badge{display:inline-flex;align-items:center;gap:6px;background:#374151;border:1px solid #4b5563;border-radius:8px;padding:4px 12px;font-size:.75rem;color:#93c5fd}
+.tool-call-badge i{font-size:.7rem}
+.tool-result{background:#111827;border:1px solid #374151;border-radius:8px;padding:8px 12px;font-size:.75rem;color:#9ca3af;margin-top:4px;max-height:200px;overflow-y:auto}
+.model-search-wrap{position:relative}
+.model-dropdown{position:absolute;bottom:100%;left:0;right:0;background:#1f2937;border:1px solid #4b5563;border-radius:12px;max-height:240px;overflow-y:auto;z-index:100;display:none;margin-bottom:4px}
+.model-dropdown.show{display:block}
+.model-dropdown-item{padding:8px 14px;font-size:.8rem;cursor:pointer;border-bottom:1px solid #374151;transition:background .1s}
+.model-dropdown-item:last-child{border-bottom:none}
+.model-dropdown-item:hover,.model-dropdown-item.active{background:#374151;color:#6ee7b7}
+.model-dropdown-item .model-provider{font-size:.65rem;color:#6b7280}
+.model-dropdown-item .model-context{font-size:.65rem;color:#9ca3af;float:right}
+.scroll-fab{position:absolute;bottom:100px;right:30px;width:40px;height:40px;border-radius:50%;background:#065f46;border:1px solid #059669;color:#6ee7b7;display:none;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+.scroll-fab:hover{background:#047857;transform:scale(1.1)}
+.scroll-fab.show{display:flex}
+.empty-state .suggestion{background:#1f2937;border:1px solid #374151;border-radius:12px;padding:10px 16px;cursor:pointer;transition:all .15s;font-size:.85rem}
+.empty-state .suggestion:hover{background:#374151;border-color:#059669;color:#6ee7b7}
+.cost-badge{font-size:.65rem;color:#9ca3af;background:#374151;border-radius:4px;padding:1px 6px}
+
+/* Settings modal */
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:200;display:none;align-items:center;justify-content:center}
+.modal-overlay.show{display:flex}
+.modal-box{background:#1f2937;border:1px solid #374151;border-radius:20px;padding:24px;width:400px;max-width:90vw;max-height:80vh;overflow-y:auto;box-shadow:0 25px 50px rgba(0,0,0,.5)}
+.modal-box h2{font-size:1.1rem;font-weight:600;margin-bottom:16px;color:#f3f4f6}
+.modal-close{float:right;cursor:pointer;color:#9ca3af;font-size:1.2rem}
+.modal-close:hover{color:#f3f4f6}
+.modal-box label{display:block;font-size:.85rem;margin-bottom:4px;margin-top:12px;color:#d1d5db}
+.modal-box input,.modal-box textarea{width:100%;background:#111827;border:1px solid #4b5563;border-radius:10px;padding:10px 14px;font-size:.85rem;color:#f3f4f6;outline:none}
+.modal-box input:focus,.modal-box textarea:focus{border-color:#059669}
+.modal-box textarea{resize:vertical}
+.modal-box .btn{width:100%;background:#059669;border:none;border-radius:10px;padding:10px;font-size:.85rem;color:white;cursor:pointer;margin-top:12px;font-weight:500}
+.modal-box .btn:hover{background:#047857}
+.modal-box .btn-secondary{background:#374151}
+.modal-box .btn-secondary:hover{background:#4b5563}
+</style>
+<style>*, ::before, ::after{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/* ! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com */*,::after,::before{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}::after,::before{--tw-content:''}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0;padding:0}legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.fixed{position:fixed}.relative{position:relative}.bottom-6{bottom:1.5rem}.right-6{right:1.5rem}.z-50{z-index:50}.mb-1{margin-bottom:0.25rem}.mb-2{margin-bottom:0.5rem}.mb-4{margin-bottom:1rem}.mb-6{margin-bottom:1.5rem}.mr-2{margin-right:0.5rem}.mt-1{margin-top:0.25rem}.line-clamp-1{overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:1}.flex{display:flex}.hidden{display:none}.h-screen{height:100vh}.h-12{height:3rem}.h-14{height:3.5rem}.h-full{height:100%}.w-12{width:3rem}.w-80{width:20rem}.w-full{width:100%}.min-w-0{min-width:0px}.max-w-md{max-width:28rem}.max-w-\[80\%\]{max-width:80%}.flex-1{flex:1 1 0%}.shrink-0{flex-shrink:0}.cursor-pointer{cursor:pointer}.resize-y{resize:vertical}.flex-col{flex-direction:column}.items-center{align-items:center}.justify-start{justify-content:flex-start}.justify-end{justify-content:flex-end}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.gap-1{gap:0.25rem}.gap-2{gap:0.5rem}.gap-3{gap:0.75rem}.space-y-1 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.25rem * var(--tw-space-y-reverse))}.space-y-2 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.5rem * var(--tw-space-y-reverse))}.space-y-4 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem * var(--tw-space-y-reverse))}.self-end{align-self:flex-end}.overflow-auto{overflow:auto}.overflow-y-auto{overflow-y:auto}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rounded-2xl{border-radius:1rem}.rounded-3xl{border-radius:1.5rem}.rounded-xl{border-radius:0.75rem}.border{border-width:1px}.border-b{border-bottom-width:1px}.border-r{border-right-width:1px}.border-t{border-top-width:1px}.border-gray-600{--tw-border-opacity:1;border-color:rgb(75 85 99 / var(--tw-border-opacity, 1))}.border-gray-700{--tw-border-opacity:1;border-color:rgb(55 65 81 / var(--tw-border-opacity, 1))}.bg-emerald-600{--tw-bg-opacity:1;background-color:rgb(5 150 105 / var(--tw-bg-opacity, 1))}.bg-gray-700{--tw-bg-opacity:1;background-color:rgb(55 65 81 / var(--tw-bg-opacity, 1))}.bg-gray-800{--tw-bg-opacity:1;background-color:rgb(31 41 55 / var(--tw-bg-opacity, 1))}.bg-gray-900{--tw-bg-opacity:1;background-color:rgb(17 24 39 / var(--tw-bg-opacity, 1))}.bg-gray-950{--tw-bg-opacity:1;background-color:rgb(3 7 18 / var(--tw-bg-opacity, 1))}.bg-red-700{--tw-bg-opacity:1;background-color:rgb(185 28 28 / var(--tw-bg-opacity, 1))}.p-4{padding:1rem}.p-6{padding:1.5rem}.px-2{padding-left:0.5rem;padding-right:0.5rem}.px-4{padding-left:1rem;padding-right:1rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}.px-6{padding-left:1.5rem;padding-right:1.5rem}.px-8{padding-left:2rem;padding-right:2rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}.py-3{padding-top:0.75rem;padding-bottom:0.75rem}.py-4{padding-top:1rem;padding-bottom:1rem}.pb-3{padding-bottom:0.75rem}.text-center{text-align:center}.text-2xl{font-size:1.5rem;line-height:2rem}.text-5xl{font-size:3rem;line-height:1}.text-sm{font-size:0.875rem;line-height:1.25rem}.text-xs{font-size:0.75rem;line-height:1rem}.font-bold{font-weight:700}.font-medium{font-weight:500}.uppercase{text-transform:uppercase}.tracking-widest{letter-spacing:0.1em}.text-emerald-400{--tw-text-opacity:1;color:rgb(52 211 153 / var(--tw-text-opacity, 1))}.text-emerald-500{--tw-text-opacity:1;color:rgb(16 185 129 / var(--tw-text-opacity, 1))}.text-emerald-600{--tw-text-opacity:1;color:rgb(5 150 105 / var(--tw-text-opacity, 1))}.text-gray-200{--tw-text-opacity:1;color:rgb(229 231 235 / var(--tw-text-opacity, 1))}.text-gray-300{--tw-text-opacity:1;color:rgb(209 213 219 / var(--tw-text-opacity, 1))}.text-gray-400{--tw-text-opacity:1;color:rgb(156 163 175 / var(--tw-text-opacity, 1))}.text-gray-500{--tw-text-opacity:1;color:rgb(107 114 128 / var(--tw-text-opacity, 1))}.text-white{--tw-text-opacity:1;color:rgb(255 255 255 / var(--tw-text-opacity, 1))}.accent-emerald-500{accent-color:#10b981}.shadow-2xl{--tw-shadow:0 25px 50px -12px rgb(0 0 0 / 0.25);--tw-shadow-colored:0 25px 50px -12px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000), var(--tw-shadow)}.transition{transition-property:color, background-color, border-color, fill, stroke, opacity, box-shadow, transform, filter, -webkit-text-decoration-color, -webkit-backdrop-filter;transition-property:color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;transition-property:color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter, -webkit-text-decoration-color, -webkit-backdrop-filter;transition-timing-function:cubic-bezier(0.4, 0, 0.2, 1);transition-duration:150ms}.hover\:bg-emerald-700:hover{--tw-bg-opacity:1;background-color:rgb(4 120 87 / var(--tw-bg-opacity, 1))}.hover\:bg-gray-600:hover{--tw-bg-opacity:1;background-color:rgb(75 85 99 / var(--tw-bg-opacity, 1))}.hover\:bg-red-600:hover{--tw-bg-opacity:1;background-color:rgb(220 38 38 / var(--tw-bg-opacity, 1))}.hover\:bg-gray-800:hover{--tw-bg-opacity:1;background-color:rgb(31 41 55 / var(--tw-bg-opacity, 1))}.hover\:text-emerald-300:hover{--tw-text-opacity:1;color:rgb(110 231 183 / var(--tw-text-opacity, 1))}.hover\:text-emerald-400:hover{--tw-text-opacity:1;color:rgb(52 211 153 / var(--tw-text-opacity, 1))}.hover\:text-red-400:hover{--tw-text-opacity:1;color:rgb(248 113 113 / var(--tw-text-opacity, 1))}.focus\:border-emerald-500:focus{--tw-border-opacity:1;border-color:rgb(16 185 129 / var(--tw-border-opacity, 1))}.focus\:outline-none:focus{outline:2px solid transparent;outline-offset:2px}</style></head>
+<body class="h-screen flex">
+
+<!-- Settings Modal -->
+<div id="settingsModal" class="modal-overlay">
+<div class="modal-box">
+<span class="modal-close" onclick="closeSettings()">×</span>
+<h2><i class="fas fa-cog text-emerald-500 mr-2"></i>Settings</h2>
+
+<label>OpenRouter API Key <span id="keyStatusModal" class="text-xs"><i class="fas fa-circle text-emerald-500" style="color:#6ee7b7"></i></span></label>
+<input id="apiKeyModal" type="password" placeholder="sk-or-..." onchange="syncApiKey()">
+
+<label>System Prompt</label>
+<textarea id="sysPromptModal" rows="4" placeholder="Optional system prompt sent with every message..." onchange="saveSysPrompt()"></textarea>
+
+<button class="btn" onclick="saveSettings()">Save Settings</button>
+<button class="btn btn-secondary" onclick="closeSettings()" style="margin-top:8px">Close</button>
+</div>
+</div>
+
+<!-- Sidebar -->
+<div class="w-80 bg-gray-900 border-r border-gray-700 flex flex-col shrink-0">
+<div class="p-4 border-b border-gray-700">
+<h1 class="text-2xl font-bold flex items-center gap-2"><i class="fas fa-seedling text-emerald-500"></i> ChatSeed</h1>
+<p class="text-xs text-emerald-400 mt-1">v6 — Settings Panel</p>
+</div>
+<div class="p-4 space-y-2">
+<button onclick="newChat()" class="w-full bg-emerald-600 hover:bg-emerald-700 py-3 rounded-2xl font-medium flex items-center justify-center gap-2 transition"><i class="fas fa-plus"></i> New Chat</button>
+<button onclick="openSettings()" class="w-full bg-gray-700 hover:bg-gray-600 py-2 rounded-xl text-xs transition flex items-center justify-center gap-1"><i class="fas fa-cog"></i> Settings</button>
+</div>
+<div class="px-2 flex items-center justify-between mb-1">
+<span class="px-2 text-xs uppercase tracking-widest text-gray-500">Conversations</span>
+<div class="flex items-center gap-2">
+<span id="undoBtn" class="text-xs cursor-pointer hover:text-emerald-400 transition" title="Undo last evolution write" onclick="undoLastWrite()"><i class="fas fa-undo"></i></span>
+<span class="text-xs text-gray-500"><span id="totalTokens">0</span> tok</span>
+</div>
+</div>
+<div class="px-2"><input id="convSearch" class="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500 mb-1" type="text" placeholder="Search conversations..." oninput="renderChatHistory()"></div>
+<div id="chatHistory" class="flex-1 overflow-auto px-2 space-y-1"><div onclick="loadChat('chat_1782129083704')" class="px-4 py-3 rounded-2xl cursor-pointer hover:bg-gray-800 transition bg-gray-800"><div class="line-clamp-1 text-sm">fix the code so that the model dropdown drops up i...</div><div class="text-xs text-gray-500">6/22/2026</div></div><div onclick="loadChat('chat_1782129054179')" class="px-4 py-3 rounded-2xl cursor-pointer hover:bg-gray-800 transition"><div class="line-clamp-1 text-sm">Read your code and report what you see</div><div class="text-xs text-gray-500">6/22/2026</div></div><div onclick="loadChat('chat_1782127870482')" class="px-4 py-3 rounded-2xl cursor-pointer hover:bg-gray-800 transition"><div class="line-clamp-1 text-sm">ok, read the current version and report, offer sug...</div><div class="text-xs text-gray-500">6/22/2026</div></div><div onclick="loadChat('chat_1782127599729')" class="px-4 py-3 rounded-2xl cursor-pointer hover:bg-gray-800 transition"><div class="line-clamp-1 text-sm">ok, current version is great, read teh code and re...</div><div class="text-xs text-gray-500">6/22/2026</div></div><div onclick="loadChat('chat_1782127370360')" class="px-4 py-3 rounded-2xl cursor-pointer hover:bg-gray-800 transition"><div class="line-clamp-1 text-sm">let's test your ability to use multi steps now</div><div class="text-xs text-gray-500">6/22/2026</div></div><div onclick="loadChat('chat_1782126851068')" class="px-4 py-3 rounded-2xl cursor-pointer hover:bg-gray-800 transition"><div class="line-clamp-1 text-sm">New Chat</div><div class="text-xs text-gray-500">6/22/2026</div></div><div onclick="loadChat('chat_1782126604242')" class="px-4 py-3 rounded-2xl cursor-pointer hover:bg-gray-800 transition"><div class="line-clamp-1 text-sm">New Chat</div><div class="text-xs text-gray-500">6/22/2026</div></div><div onclick="loadChat('chat_1782126197301')" class="px-4 py-3 rounded-2xl cursor-pointer hover:bg-gray-800 transition"><div class="line-clamp-1 text-sm">New Chat</div><div class="text-xs text-gray-500">6/22/2026</div></div><div onclick="loadChat('chat_1782125950031')" class="px-4 py-3 rounded-2xl cursor-pointer hover:bg-gray-800 transition"><div class="line-clamp-1 text-sm">New Chat</div><div class="text-xs text-gray-500">6/22/2026</div></div><div onclick="loadChat('chat_1782125548711')" class="px-4 py-3 rounded-2xl cursor-pointer hover:bg-gray-800 transition"><div class="line-clamp-1 text-sm">New Chat</div><div class="text-xs text-gray-500">6/22/2026</div></div></div>
+<div class="px-4 py-3 border-t border-gray-700">
+<div class="model-search-wrap">
+<input id="modelSearchInput" type="text" class="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500" placeholder="Search models..." autocomplete="off" onfocus="window.filterModelDropdown()" oninput="window.filterModelDropdown()" onblur="setTimeout(function(){window.closeModelDropdown()},200)" onkeydown="window.onModelKeydown(event)" data-model-id="deepseek/deepseek-v4-flash">
+<div id="modelDropdown" class="model-dropdown"><div class="model-dropdown-item active" data-model-id="ai21/jamba-large-1.7" onclick="selectModelFromDropdown('ai21/jamba-large-1.7')"><div>AI21: Jamba Large 1.7 <span class="model-context">256k</span></div><div class="model-provider">ai21</div></div><div class="model-dropdown-item" data-model-id="aion-labs/aion-1.0" onclick="selectModelFromDropdown('aion-labs/aion-1.0')"><div>AionLabs: Aion-1.0 <span class="model-context">131k</span></div><div class="model-provider">aion-labs</div></div><div class="model-dropdown-item" data-model-id="aion-labs/aion-1.0-mini" onclick="selectModelFromDropdown('aion-labs/aion-1.0-mini')"><div>AionLabs: Aion-1.0-Mini <span class="model-context">131k</span></div><div class="model-provider">aion-labs</div></div><div class="model-dropdown-item" data-model-id="aion-labs/aion-2.0" onclick="selectModelFromDropdown('aion-labs/aion-2.0')"><div>AionLabs: Aion-2.0 <span class="model-context">131k</span></div><div class="model-provider">aion-labs</div></div><div class="model-dropdown-item" data-model-id="aion-labs/aion-rp-llama-3.1-8b" onclick="selectModelFromDropdown('aion-labs/aion-rp-llama-3.1-8b')"><div>AionLabs: Aion-RP 1.0 (8B) <span class="model-context">33k</span></div><div class="model-provider">aion-labs</div></div><div class="model-dropdown-item" data-model-id="allenai/olmo-3-32b-think" onclick="selectModelFromDropdown('allenai/olmo-3-32b-think')"><div>AllenAI: Olmo 3 32B Think <span class="model-context">66k</span></div><div class="model-provider">allenai</div></div><div class="model-dropdown-item" data-model-id="amazon/nova-2-lite-v1" onclick="selectModelFromDropdown('amazon/nova-2-lite-v1')"><div>Amazon: Nova 2 Lite <span class="model-context">1000k</span></div><div class="model-provider">amazon</div></div><div class="model-dropdown-item" data-model-id="amazon/nova-lite-v1" onclick="selectModelFromDropdown('amazon/nova-lite-v1')"><div>Amazon: Nova Lite 1.0 <span class="model-context">300k</span></div><div class="model-provider">amazon</div></div><div class="model-dropdown-item" data-model-id="amazon/nova-micro-v1" onclick="selectModelFromDropdown('amazon/nova-micro-v1')"><div>Amazon: Nova Micro 1.0 <span class="model-context">128k</span></div><div class="model-provider">amazon</div></div><div class="model-dropdown-item" data-model-id="amazon/nova-premier-v1" onclick="selectModelFromDropdown('amazon/nova-premier-v1')"><div>Amazon: Nova Premier 1.0 <span class="model-context">1000k</span></div><div class="model-provider">amazon</div></div><div class="model-dropdown-item" data-model-id="amazon/nova-pro-v1" onclick="selectModelFromDropdown('amazon/nova-pro-v1')"><div>Amazon: Nova Pro 1.0 <span class="model-context">300k</span></div><div class="model-provider">amazon</div></div><div class="model-dropdown-item" data-model-id="~anthropic/claude-haiku-latest" onclick="selectModelFromDropdown('~anthropic/claude-haiku-latest')"><div>Anthropic Claude Haiku Latest <span class="model-context">200k</span></div><div class="model-provider">~anthropic</div></div><div class="model-dropdown-item" data-model-id="~anthropic/claude-sonnet-latest" onclick="selectModelFromDropdown('~anthropic/claude-sonnet-latest')"><div>Anthropic Claude Sonnet Latest <span class="model-context">1000k</span></div><div class="model-provider">~anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-3-haiku" onclick="selectModelFromDropdown('anthropic/claude-3-haiku')"><div>Anthropic: Claude 3 Haiku <span class="model-context">200k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-fable-5" onclick="selectModelFromDropdown('anthropic/claude-fable-5')"><div>Anthropic: Claude Fable 5 <span class="model-context">1000k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="~anthropic/claude-fable-latest" onclick="selectModelFromDropdown('~anthropic/claude-fable-latest')"><div>Anthropic: Claude Fable Latest <span class="model-context">1000k</span></div><div class="model-provider">~anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-haiku-4.5" onclick="selectModelFromDropdown('anthropic/claude-haiku-4.5')"><div>Anthropic: Claude Haiku 4.5 <span class="model-context">200k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-opus-4" onclick="selectModelFromDropdown('anthropic/claude-opus-4')"><div>Anthropic: Claude Opus 4 <span class="model-context">200k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-opus-4.1" onclick="selectModelFromDropdown('anthropic/claude-opus-4.1')"><div>Anthropic: Claude Opus 4.1 <span class="model-context">200k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-opus-4.5" onclick="selectModelFromDropdown('anthropic/claude-opus-4.5')"><div>Anthropic: Claude Opus 4.5 <span class="model-context">200k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-opus-4.6" onclick="selectModelFromDropdown('anthropic/claude-opus-4.6')"><div>Anthropic: Claude Opus 4.6 <span class="model-context">1000k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-opus-4.6-fast" onclick="selectModelFromDropdown('anthropic/claude-opus-4.6-fast')"><div>Anthropic: Claude Opus 4.6 (Fast) <span class="model-context">1000k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-opus-4.7" onclick="selectModelFromDropdown('anthropic/claude-opus-4.7')"><div>Anthropic: Claude Opus 4.7 <span class="model-context">1000k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-opus-4.7-fast" onclick="selectModelFromDropdown('anthropic/claude-opus-4.7-fast')"><div>Anthropic: Claude Opus 4.7 (Fast) <span class="model-context">1000k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-opus-4.8" onclick="selectModelFromDropdown('anthropic/claude-opus-4.8')"><div>Anthropic: Claude Opus 4.8 <span class="model-context">1000k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-opus-4.8-fast" onclick="selectModelFromDropdown('anthropic/claude-opus-4.8-fast')"><div>Anthropic: Claude Opus 4.8 (Fast) <span class="model-context">1000k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="~anthropic/claude-opus-latest" onclick="selectModelFromDropdown('~anthropic/claude-opus-latest')"><div>Anthropic: Claude Opus Latest <span class="model-context">1000k</span></div><div class="model-provider">~anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-sonnet-4" onclick="selectModelFromDropdown('anthropic/claude-sonnet-4')"><div>Anthropic: Claude Sonnet 4 <span class="model-context">1000k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-sonnet-4.5" onclick="selectModelFromDropdown('anthropic/claude-sonnet-4.5')"><div>Anthropic: Claude Sonnet 4.5 <span class="model-context">1000k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="anthropic/claude-sonnet-4.6" onclick="selectModelFromDropdown('anthropic/claude-sonnet-4.6')"><div>Anthropic: Claude Sonnet 4.6 <span class="model-context">1000k</span></div><div class="model-provider">anthropic</div></div><div class="model-dropdown-item" data-model-id="arcee-ai/coder-large" onclick="selectModelFromDropdown('arcee-ai/coder-large')"><div>Arcee AI: Coder Large <span class="model-context">33k</span></div><div class="model-provider">arcee-ai</div></div><div class="model-dropdown-item" data-model-id="arcee-ai/trinity-large-thinking" onclick="selectModelFromDropdown('arcee-ai/trinity-large-thinking')"><div>Arcee AI: Trinity Large Thinking <span class="model-context">262k</span></div><div class="model-provider">arcee-ai</div></div><div class="model-dropdown-item" data-model-id="arcee-ai/trinity-mini" onclick="selectModelFromDropdown('arcee-ai/trinity-mini')"><div>Arcee AI: Trinity Mini <span class="model-context">131k</span></div><div class="model-provider">arcee-ai</div></div><div class="model-dropdown-item" data-model-id="arcee-ai/virtuoso-large" onclick="selectModelFromDropdown('arcee-ai/virtuoso-large')"><div>Arcee AI: Virtuoso Large <span class="model-context">131k</span></div><div class="model-provider">arcee-ai</div></div><div class="model-dropdown-item" data-model-id="openrouter/auto" onclick="selectModelFromDropdown('openrouter/auto')"><div>Auto Router <span class="model-context">2000k</span></div><div class="model-provider">openrouter</div></div><div class="model-dropdown-item" data-model-id="baidu/ernie-4.5-vl-424b-a47b" onclick="selectModelFromDropdown('baidu/ernie-4.5-vl-424b-a47b')"><div>Baidu: ERNIE 4.5 VL 424B A47B  <span class="model-context">131k</span></div><div class="model-provider">baidu</div></div><div class="model-dropdown-item" data-model-id="openrouter/bodybuilder" onclick="selectModelFromDropdown('openrouter/bodybuilder')"><div>Body Builder (beta) <span class="model-context">128k</span></div><div class="model-provider">openrouter</div></div><div class="model-dropdown-item" data-model-id="bytedance-seed/seed-1.6" onclick="selectModelFromDropdown('bytedance-seed/seed-1.6')"><div>ByteDance Seed: Seed 1.6 <span class="model-context">262k</span></div><div class="model-provider">bytedance-seed</div></div><div class="model-dropdown-item" data-model-id="bytedance-seed/seed-1.6-flash" onclick="selectModelFromDropdown('bytedance-seed/seed-1.6-flash')"><div>ByteDance Seed: Seed 1.6 Flash <span class="model-context">262k</span></div><div class="model-provider">bytedance-seed</div></div><div class="model-dropdown-item" data-model-id="bytedance-seed/seed-2.0-lite" onclick="selectModelFromDropdown('bytedance-seed/seed-2.0-lite')"><div>ByteDance Seed: Seed-2.0-Lite <span class="model-context">262k</span></div><div class="model-provider">bytedance-seed</div></div><div class="model-dropdown-item" data-model-id="bytedance-seed/seed-2.0-mini" onclick="selectModelFromDropdown('bytedance-seed/seed-2.0-mini')"><div>ByteDance Seed: Seed-2.0-Mini <span class="model-context">262k</span></div><div class="model-provider">bytedance-seed</div></div><div class="model-dropdown-item" data-model-id="bytedance/ui-tars-1.5-7b" onclick="selectModelFromDropdown('bytedance/ui-tars-1.5-7b')"><div>ByteDance: UI-TARS 7B  <span class="model-context">128k</span></div><div class="model-provider">bytedance</div></div><div class="model-dropdown-item" data-model-id="cohere/command-a" onclick="selectModelFromDropdown('cohere/command-a')"><div>Cohere: Command A <span class="model-context">256k</span></div><div class="model-provider">cohere</div></div><div class="model-dropdown-item" data-model-id="cohere/command-r-08-2024" onclick="selectModelFromDropdown('cohere/command-r-08-2024')"><div>Cohere: Command R (08-2024) <span class="model-context">128k</span></div><div class="model-provider">cohere</div></div><div class="model-dropdown-item" data-model-id="cohere/command-r-plus-08-2024" onclick="selectModelFromDropdown('cohere/command-r-plus-08-2024')"><div>Cohere: Command R+ (08-2024) <span class="model-context">128k</span></div><div class="model-provider">cohere</div></div><div class="model-dropdown-item" data-model-id="cohere/command-r7b-12-2024" onclick="selectModelFromDropdown('cohere/command-r7b-12-2024')"><div>Cohere: Command R7B (12-2024) <span class="model-context">128k</span></div><div class="model-provider">cohere</div></div><div class="model-dropdown-item" data-model-id="cohere/north-mini-code:free" onclick="selectModelFromDropdown('cohere/north-mini-code:free')"><div>Cohere: North Mini Code (free) <span class="model-context">256k</span></div><div class="model-provider">cohere</div></div><div class="model-dropdown-item" data-model-id="deepcogito/cogito-v2.1-671b" onclick="selectModelFromDropdown('deepcogito/cogito-v2.1-671b')"><div>Deep Cogito: Cogito v2.1 671B <span class="model-context">128k</span></div><div class="model-provider">deepcogito</div></div><div class="model-dropdown-item" data-model-id="deepseek/deepseek-chat" onclick="selectModelFromDropdown('deepseek/deepseek-chat')"><div>DeepSeek: DeepSeek V3 <span class="model-context">131k</span></div><div class="model-provider">deepseek</div></div><div class="model-dropdown-item" data-model-id="deepseek/deepseek-chat-v3-0324" onclick="selectModelFromDropdown('deepseek/deepseek-chat-v3-0324')"><div>DeepSeek: DeepSeek V3 0324 <span class="model-context">164k</span></div><div class="model-provider">deepseek</div></div><div class="model-dropdown-item" data-model-id="deepseek/deepseek-chat-v3.1" onclick="selectModelFromDropdown('deepseek/deepseek-chat-v3.1')"><div>DeepSeek: DeepSeek V3.1 <span class="model-context">164k</span></div><div class="model-provider">deepseek</div></div><div class="model-dropdown-item" data-model-id="deepseek/deepseek-v3.1-terminus" onclick="selectModelFromDropdown('deepseek/deepseek-v3.1-terminus')"><div>DeepSeek: DeepSeek V3.1 Terminus <span class="model-context">164k</span></div><div class="model-provider">deepseek</div></div><div class="model-dropdown-item" data-model-id="deepseek/deepseek-v3.2" onclick="selectModelFromDropdown('deepseek/deepseek-v3.2')"><div>DeepSeek: DeepSeek V3.2 <span class="model-context">131k</span></div><div class="model-provider">deepseek</div></div><div class="model-dropdown-item" data-model-id="deepseek/deepseek-v3.2-exp" onclick="selectModelFromDropdown('deepseek/deepseek-v3.2-exp')"><div>DeepSeek: DeepSeek V3.2 Exp <span class="model-context">164k</span></div><div class="model-provider">deepseek</div></div><div class="model-dropdown-item" data-model-id="deepseek/deepseek-v4-flash" onclick="selectModelFromDropdown('deepseek/deepseek-v4-flash')"><div>DeepSeek: DeepSeek V4 Flash <span class="model-context">1049k</span></div><div class="model-provider">deepseek</div></div><div class="model-dropdown-item" data-model-id="deepseek/deepseek-v4-pro" onclick="selectModelFromDropdown('deepseek/deepseek-v4-pro')"><div>DeepSeek: DeepSeek V4 Pro <span class="model-context">1049k</span></div><div class="model-provider">deepseek</div></div><div class="model-dropdown-item" data-model-id="deepseek/deepseek-r1" onclick="selectModelFromDropdown('deepseek/deepseek-r1')"><div>DeepSeek: R1 <span class="model-context">164k</span></div><div class="model-provider">deepseek</div></div><div class="model-dropdown-item" data-model-id="deepseek/deepseek-r1-0528" onclick="selectModelFromDropdown('deepseek/deepseek-r1-0528')"><div>DeepSeek: R1 0528 <span class="model-context">164k</span></div><div class="model-provider">deepseek</div></div><div class="model-dropdown-item" data-model-id="deepseek/deepseek-r1-distill-llama-70b" onclick="selectModelFromDropdown('deepseek/deepseek-r1-distill-llama-70b')"><div>DeepSeek: R1 Distill Llama 70B <span class="model-context">128k</span></div><div class="model-provider">deepseek</div></div><div class="model-dropdown-item" data-model-id="essentialai/rnj-1-instruct" onclick="selectModelFromDropdown('essentialai/rnj-1-instruct')"><div>EssentialAI: Rnj 1 Instruct <span class="model-context">33k</span></div><div class="model-provider">essentialai</div></div><div class="model-dropdown-item" data-model-id="openrouter/free" onclick="selectModelFromDropdown('openrouter/free')"><div>Free Models Router <span class="model-context">200k</span></div><div class="model-provider">openrouter</div></div><div class="model-dropdown-item" data-model-id="~google/gemini-flash-latest" onclick="selectModelFromDropdown('~google/gemini-flash-latest')"><div>Google Gemini Flash Latest <span class="model-context">1049k</span></div><div class="model-provider">~google</div></div><div class="model-dropdown-item" data-model-id="~google/gemini-pro-latest" onclick="selectModelFromDropdown('~google/gemini-pro-latest')"><div>Google Gemini Pro Latest <span class="model-context">1049k</span></div><div class="model-provider">~google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-2.5-flash" onclick="selectModelFromDropdown('google/gemini-2.5-flash')"><div>Google: Gemini 2.5 Flash <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-2.5-flash-lite" onclick="selectModelFromDropdown('google/gemini-2.5-flash-lite')"><div>Google: Gemini 2.5 Flash Lite <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-2.5-flash-lite-preview-09-2025" onclick="selectModelFromDropdown('google/gemini-2.5-flash-lite-preview-09-2025')"><div>Google: Gemini 2.5 Flash Lite Preview 09-2025 <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-2.5-pro" onclick="selectModelFromDropdown('google/gemini-2.5-pro')"><div>Google: Gemini 2.5 Pro <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-2.5-pro-preview-05-06" onclick="selectModelFromDropdown('google/gemini-2.5-pro-preview-05-06')"><div>Google: Gemini 2.5 Pro Preview 05-06 <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-2.5-pro-preview" onclick="selectModelFromDropdown('google/gemini-2.5-pro-preview')"><div>Google: Gemini 2.5 Pro Preview 06-05 <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-3-flash-preview" onclick="selectModelFromDropdown('google/gemini-3-flash-preview')"><div>Google: Gemini 3 Flash Preview <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-3.1-flash-lite" onclick="selectModelFromDropdown('google/gemini-3.1-flash-lite')"><div>Google: Gemini 3.1 Flash Lite <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-3.1-flash-lite-preview" onclick="selectModelFromDropdown('google/gemini-3.1-flash-lite-preview')"><div>Google: Gemini 3.1 Flash Lite Preview <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-3.1-pro-preview" onclick="selectModelFromDropdown('google/gemini-3.1-pro-preview')"><div>Google: Gemini 3.1 Pro Preview <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-3.1-pro-preview-customtools" onclick="selectModelFromDropdown('google/gemini-3.1-pro-preview-customtools')"><div>Google: Gemini 3.1 Pro Preview Custom Tools <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-3.5-flash" onclick="selectModelFromDropdown('google/gemini-3.5-flash')"><div>Google: Gemini 3.5 Flash <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemma-2-27b-it" onclick="selectModelFromDropdown('google/gemma-2-27b-it')"><div>Google: Gemma 2 27B <span class="model-context">8k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemma-3-12b-it" onclick="selectModelFromDropdown('google/gemma-3-12b-it')"><div>Google: Gemma 3 12B <span class="model-context">131k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemma-3-27b-it" onclick="selectModelFromDropdown('google/gemma-3-27b-it')"><div>Google: Gemma 3 27B <span class="model-context">131k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemma-3-4b-it" onclick="selectModelFromDropdown('google/gemma-3-4b-it')"><div>Google: Gemma 3 4B <span class="model-context">131k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemma-3n-e4b-it" onclick="selectModelFromDropdown('google/gemma-3n-e4b-it')"><div>Google: Gemma 3n 4B <span class="model-context">33k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemma-4-26b-a4b-it" onclick="selectModelFromDropdown('google/gemma-4-26b-a4b-it')"><div>Google: Gemma 4 26B A4B  <span class="model-context">262k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemma-4-26b-a4b-it:free" onclick="selectModelFromDropdown('google/gemma-4-26b-a4b-it:free')"><div>Google: Gemma 4 26B A4B  (free) <span class="model-context">262k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemma-4-31b-it" onclick="selectModelFromDropdown('google/gemma-4-31b-it')"><div>Google: Gemma 4 31B <span class="model-context">262k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemma-4-31b-it:free" onclick="selectModelFromDropdown('google/gemma-4-31b-it:free')"><div>Google: Gemma 4 31B (free) <span class="model-context">262k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/lyria-3-clip-preview" onclick="selectModelFromDropdown('google/lyria-3-clip-preview')"><div>Google: Lyria 3 Clip Preview <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/lyria-3-pro-preview" onclick="selectModelFromDropdown('google/lyria-3-pro-preview')"><div>Google: Lyria 3 Pro Preview <span class="model-context">1049k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-2.5-flash-image" onclick="selectModelFromDropdown('google/gemini-2.5-flash-image')"><div>Google: Nano Banana (Gemini 2.5 Flash Image) <span class="model-context">33k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-3.1-flash-image-preview" onclick="selectModelFromDropdown('google/gemini-3.1-flash-image-preview')"><div>Google: Nano Banana 2 (Gemini 3.1 Flash Image Preview) <span class="model-context">131k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-3.1-flash-image" onclick="selectModelFromDropdown('google/gemini-3.1-flash-image')"><div>Google: Nano Banana 2 (Gemini 3.1 Flash Image) <span class="model-context">131k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-3-pro-image-preview" onclick="selectModelFromDropdown('google/gemini-3-pro-image-preview')"><div>Google: Nano Banana Pro (Gemini 3 Pro Image Preview) <span class="model-context">66k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="google/gemini-3-pro-image" onclick="selectModelFromDropdown('google/gemini-3-pro-image')"><div>Google: Nano Banana Pro (Gemini 3 Pro Image) <span class="model-context">66k</span></div><div class="model-provider">google</div></div><div class="model-dropdown-item" data-model-id="ibm-granite/granite-4.0-h-micro" onclick="selectModelFromDropdown('ibm-granite/granite-4.0-h-micro')"><div>IBM: Granite 4.0 Micro <span class="model-context">131k</span></div><div class="model-provider">ibm-granite</div></div><div class="model-dropdown-item" data-model-id="ibm-granite/granite-4.1-8b" onclick="selectModelFromDropdown('ibm-granite/granite-4.1-8b')"><div>IBM: Granite 4.1 8B <span class="model-context">131k</span></div><div class="model-provider">ibm-granite</div></div><div class="model-dropdown-item" data-model-id="inception/mercury-2" onclick="selectModelFromDropdown('inception/mercury-2')"><div>Inception: Mercury 2 <span class="model-context">128k</span></div><div class="model-provider">inception</div></div><div class="model-dropdown-item" data-model-id="inclusionai/ling-2.6-1t" onclick="selectModelFromDropdown('inclusionai/ling-2.6-1t')"><div>inclusionAI: Ling-2.6-1T <span class="model-context">262k</span></div><div class="model-provider">inclusionai</div></div><div class="model-dropdown-item" data-model-id="inclusionai/ling-2.6-flash" onclick="selectModelFromDropdown('inclusionai/ling-2.6-flash')"><div>inclusionAI: Ling-2.6-flash <span class="model-context">262k</span></div><div class="model-provider">inclusionai</div></div><div class="model-dropdown-item" data-model-id="inclusionai/ring-2.6-1t" onclick="selectModelFromDropdown('inclusionai/ring-2.6-1t')"><div>inclusionAI: Ring-2.6-1T <span class="model-context">262k</span></div><div class="model-provider">inclusionai</div></div><div class="model-dropdown-item" data-model-id="inflection/inflection-3-pi" onclick="selectModelFromDropdown('inflection/inflection-3-pi')"><div>Inflection: Inflection 3 Pi <span class="model-context">8k</span></div><div class="model-provider">inflection</div></div><div class="model-dropdown-item" data-model-id="inflection/inflection-3-productivity" onclick="selectModelFromDropdown('inflection/inflection-3-productivity')"><div>Inflection: Inflection 3 Productivity <span class="model-context">8k</span></div><div class="model-provider">inflection</div></div><div class="model-dropdown-item" data-model-id="kwaipilot/kat-coder-pro-v2" onclick="selectModelFromDropdown('kwaipilot/kat-coder-pro-v2')"><div>Kwaipilot: KAT-Coder-Pro V2 <span class="model-context">256k</span></div><div class="model-provider">kwaipilot</div></div></div>
+</div>
+</div>
+<div class="px-4 pb-3 text-xs text-gray-500 text-center">
+<span class="kbd">Enter</span> send · <span class="kbd">Shift+Enter</span> newline · <span class="kbd">Esc</span> cancel
+</div>
+</div>
+
+<!-- Main Chat -->
+<div class="flex-1 flex flex-col min-w-0 relative">
+<div class="h-14 bg-gray-900 border-b border-gray-700 flex items-center px-6 justify-between shrink-0">
+<div class="flex items-center gap-3 min-w-0">
+<div id="currentModelHeader" class="font-medium text-gray-200 truncate">DeepSeek: DeepSeek V4 Flash</div>
+<span id="tokenUsage" class="token-badge shrink-0">~0 tokens</span>
+<span id="costDisplay" class="cost-badge shrink-0 hidden">~$0.0032</span>
+</div>
+<div class="flex items-center gap-3 text-gray-400 shrink-0">
+<label class="flex items-center gap-1 text-xs cursor-pointer" title="Auto-scroll"><input type="checkbox" id="autoScrollToggle" checked="" onchange="updateAutoScroll()" class="accent-emerald-500"> <i class="fas fa-arrow-down text-xs"></i></label>
+<button onclick="exportChat()" title="Export" class="hover:text-emerald-300 transition"><i class="fas fa-download"></i></button>
+<button onclick="deleteCurrentChat()" title="Delete" class="hover:text-red-400 transition"><i class="fas fa-trash"></i></button>
+</div>
+</div>
+<div id="messages" class="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-950"><div class="flex justify-end msg-appear"><div class="user-msg text-white max-w-[80%] px-6 py-4 prose prose-invert" style="white-space: pre-wrap;">fix the code so that the model dropdown drops up instead of down</div></div><div class="flex justify-start msg-appear"><div class="assistant-msg max-w-[80%] px-6 py-4 prose prose-invert"><div class="tool-call-badge"><i class="fas fa-cog fa-spin"></i> Reading source code...</div><div class="tool-result">Read current source code</div><div class="msg-ts">04:51 AM</div></div></div><div id="step-bar" class="step-bar pulse"><i class="fas fa-book-open fa-fw"></i><span class="step-label">Reading source code...</span><span class="step-count">Step 1/10</span></div></div>
+<div id="scrollFab" class="scroll-fab" onclick="scrollToBottom(true)"><i class="fas fa-arrow-down text-xs"></i></div>
+<div class="p-6 bg-gray-900 border-t border-gray-700">
+<div class="flex gap-3">
+<textarea id="userInput" rows="2" class="flex-1 bg-gray-800 border border-gray-600 rounded-3xl px-5 py-4 focus:outline-none focus:border-emerald-500 resize-y" placeholder="Send a message..."></textarea>
+<button id="sendBtn" onclick="sendMessage()" class="bg-emerald-600 hover:bg-emerald-700 w-12 h-12 rounded-3xl flex items-center justify-center self-end transition shrink-0 hidden"><i class="fas fa-paper-plane"></i></button>
+<button id="cancelBtn" onclick="cancelStream()" class="bg-red-700 hover:bg-red-600 w-12 h-12 rounded-3xl flex items-center justify-center self-end transition shrink-0" title="Cancel (Esc)"><i class="fas fa-stop"></i></button>
+</div>
+</div>
+</div>
+
+<div id="toast" class="fixed bottom-6 right-6 bg-gray-800 border border-gray-600 rounded-2xl px-6 py-3 shadow-2xl z-50 hidden">Complete</div>
+
+<script>
+// GLOBAL functions so onclick= attributes in HTML can find them
+// No IIFE - everything lives in window scope
+
+// ---- State ----
+var API_KEY = '';
+var conversations = [];
+var currentChatId = null;
+var AVAILABLE_MODELS = [];
+var isProcessing = false;
+var abortController = null;
+var autoScroll = true;
+var streamBubble = null;
+var modelIndex = 0;
+var selectedModelId = '';
+var evolutionUndoStack = [];
+var modelPricing = {};
+
+// Load from localStorage safely
+try { API_KEY = localStorage.getItem('chatseed_api_key') || ''; } catch(e) {}
+try { conversations = JSON.parse(localStorage.getItem('chatseed_conversations') || '[]'); } catch(e) { conversations = []; }
+
+// ---- Tool Definition ----
+var SELF_EVOLUTION_TOOL = {
+    type: "function",
+    function: {
+        name: "evolve_self",
+        description: "Read, analyze, diff, refactor, or write the current source code.",
+        parameters: {
+            type: "object",
+            properties: {
+                action: { type: "string", enum: ["read","analyze","diff","refactor","write"], description: "What to do" },
+                new_code: { type: "string", description: "New HTML code for write/refactor" },
+                new_filename: { type: "string", description: "Suggested filename" },
+                description: { type: "string", description: "Summary of changes" }
+            },
+            required: ["action","description"]
+        }
+    }
+};
+
+// ---- Settings Modal ----
+function openSettings() {
+    document.getElementById('settingsModal').classList.add('show');
+    document.getElementById('apiKeyModal').value = API_KEY;
+    var sysVal = '';
+    try { sysVal = localStorage.getItem('chatseed_sys_prompt') || ''; } catch(e) {}
+    document.getElementById('sysPromptModal').value = sysVal;
+    updateKeyStatusModal();
+}
+
+function closeSettings() {
+    document.getElementById('settingsModal').classList.remove('show');
+}
+
+function syncApiKey() {
+    API_KEY = document.getElementById('apiKeyModal').value.trim();
+    try { localStorage.setItem('chatseed_api_key', API_KEY); } catch(e) {}
+    updateKeyStatusModal();
+}
+
+function saveSysPrompt() {
+    var val = document.getElementById('sysPromptModal').value.trim();
+    try { localStorage.setItem('chatseed_sys_prompt', val); } catch(e) {}
+}
+
+function saveSettings() {
+    syncApiKey();
+    saveSysPrompt();
+    showToast('Settings saved');
+    closeSettings();
+}
+
+function updateKeyStatusModal() {
+    var el = document.getElementById('keyStatusModal');
+    var k = API_KEY;
+    if (k && k.indexOf('sk-or-') === 0) el.innerHTML = '<i class="fas fa-circle text-emerald-500" style="color:#6ee7b7"></i>';
+    else if (k) el.innerHTML = '<i class="fas fa-circle" style="color:#facc15"></i>';
+    else el.innerHTML = '<i class="fas fa-circle" style="color:#6b7280"></i>';
+}
+
+function getSystemPrompt() {
+    try { return localStorage.getItem('chatseed_sys_prompt') || ''; } catch(e) { return ''; }
+}
+
+// ---- Helpers ----
+function getCurrentSource() {
+    return '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+}
+
+function sanitizeHTML(str) {
+    if (typeof DOMPurify !== 'undefined') return DOMPurify.sanitize(str, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function renderMarkdown(text) {
+    if (!text) return '';
+    try {
+        var raw = marked.parse(text, { breaks: true, gfm: true });
+        if (typeof DOMPurify !== 'undefined') return DOMPurify.sanitize(raw);
+        return raw;
+    } catch(e) { return text.replace(/\n/g, '<br>'); }
+}
+
+function downloadNewVersion(code, filename) {
+    if (!filename) filename = "chatseed-evolved.html";
+    var blob = new Blob([code], { type: 'text/html;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast('Downloaded: ' + filename);
+}
+
+function showToast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg; t.classList.remove('hidden');
+    clearTimeout(t._timeout);
+    t._timeout = setTimeout(function(){ t.classList.add('hidden'); }, 3500);
+}
+
+function scrollToBottom(smooth) {
+    if (smooth === undefined) smooth = true;
+    var c = document.getElementById('messages');
+    c.scrollTo({ top: c.scrollHeight, behavior: smooth ? 'smooth' : 'instant' });
+}
+
+function getTimeStr() {
+    var d = new Date(), n = new Date();
+    var isToday = d.toDateString() === n.toDateString();
+    var y = new Date(n); y.setDate(y.getDate()-1);
+    var isYest = d.toDateString() === y.toDateString();
+    var t = d.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+    if (isToday) return t;
+    if (isYest) return 'Yesterday ' + t;
+    return d.toLocaleDateString([], { month:'short', day:'numeric' }) + ' ' + t;
+}
+
+function updateAutoScroll() { autoScroll = document.getElementById('autoScrollToggle').checked; }
+
+function getCurrentChat() {
+    for (var i=0;i<conversations.length;i++) if (conversations[i].id===currentChatId) return conversations[i];
+    return null;
+}
+
+function updateTokenDisplay() {
+    var chat = getCurrentChat();
+    if (!chat) return;
+    var total = 0;
+    for (var i=0;i<chat.messages.length;i++) {
+        var m = chat.messages[i];
+        if (m.content) total += m.content.length;
+        if (m.tool_calls) for (var j=0;j<m.tool_calls.length;j++) try { total += JSON.stringify(m.tool_calls[j].function).length; } catch(e) {}
+    }
+    var approx = Math.round(total/4);
+    document.getElementById('tokenUsage').textContent = '~'+approx+' tokens';
+    document.getElementById('totalTokens').textContent = approx;
+    updateCostDisplay(approx);
+}
+
+function updateCostDisplay(tokens) {
+    var el = document.getElementById('costDisplay');
+    if (!selectedModelId||!tokens||!modelPricing[selectedModelId]) { el.classList.add('hidden'); return; }
+    var p = modelPricing[selectedModelId];
+    var cost = (p.input||0)*tokens + (p.output||0)*(tokens*0.3);
+    el.textContent = '~$'+cost.toFixed(4);
+    el.classList.remove('hidden');
+}
+
+// ---- Model Search (global) ----
+function filterModelDropdown() {
+    var input = document.getElementById('modelSearchInput');
+    var dd = document.getElementById('modelDropdown');
+    var q = input.value.toLowerCase().trim();
+    var filtered = [];
+    for (var i=0;i<AVAILABLE_MODELS.length;i++) {
+        var m = AVAILABLE_MODELS[i];
+        if (!q || m.id.toLowerCase().indexOf(q)!==-1 || m.name.toLowerCase().indexOf(q)!==-1 || (m.provider&&m.provider.name&&m.provider.name.toLowerCase().indexOf(q)!==-1)) {
+            filtered.push(m);
+        }
+    }
+    if (filtered.length===0) {
+        dd.innerHTML = '<div class="model-dropdown-item text-gray-500">No models found</div>';
+    } else {
+        var html = '';
+        var count = Math.min(filtered.length, 100);
+        for (var i=0;i<count;i++) {
+            var m = filtered[i];
+            var prov = (m.provider&&m.provider.name) || m.id.split('/')[0] || 'Unknown';
+            var ctx = m.context_length ? Math.round(m.context_length/1000)+'k' : '?';
+            html += '<div class="model-dropdown-item'+(i===0?' active':'')+'" data-model-id="'+m.id+'" onclick="selectModelFromDropdown(\''+m.id+'\')">';
+            html += '<div>'+m.name+' <span class="model-context">'+ctx+'</span></div>';
+            html += '<div class="model-provider">'+prov+'</div></div>';
+        }
+        dd.innerHTML = html;
+    }
+    dd.classList.add('show');
+    modelIndex = 0;
+}
+
+function closeModelDropdown() {
+    document.getElementById('modelDropdown').classList.remove('show');
+}
+
+function onModelKeydown(e) {
+    var dd = document.getElementById('modelDropdown');
+    var items = dd.querySelectorAll('.model-dropdown-item');
+    if (!dd.classList.contains('show')) return;
+    if (e.key==='ArrowDown') { e.preventDefault(); modelIndex = Math.min(modelIndex+1, items.length-1); highlightModel(items); }
+    else if (e.key==='ArrowUp') { e.preventDefault(); modelIndex = Math.max(modelIndex-1, 0); highlightModel(items); }
+    else if (e.key==='Enter') { e.preventDefault(); if (items[modelIndex]&&items[modelIndex].dataset.modelId) selectModelFromDropdown(items[modelIndex].dataset.modelId); }
+    else if (e.key==='Escape') closeModelDropdown();
+}
+
+function highlightModel(items) {
+    for (var i=0;i<items.length;i++) items[i].classList.toggle('active', i===modelIndex);
+    if (items[modelIndex]) items[modelIndex].scrollIntoView({block:'nearest'});
+}
+
+function selectModelFromDropdown(id) {
+    var model = null;
+    for (var i=0;i<AVAILABLE_MODELS.length;i++) if (AVAILABLE_MODELS[i].id===id) { model=AVAILABLE_MODELS[i]; break; }
+    if (!model) return;
+    var input = document.getElementById('modelSearchInput');
+    input.value = model.name;
+    input.dataset.modelId = id;
+    selectedModelId = id;
+    closeModelDropdown();
+    document.getElementById('currentModelHeader').textContent = model.name;
+    var chat = getCurrentChat();
+    if (chat) { chat.model = id; saveConversations(); }
+    updateTokenDisplay();
+}
+
+// ---- Init ----
+function init() {
+    renderChatHistory();
+    if (conversations.length===0) newChat();
+    else loadChat(conversations[0].id);
+    fetchModels();
+    setupScrollDetector();
+}
+
+function fetchModels() {
+    if (!API_KEY) return;
+    fetch('https://openrouter.ai/api/v1/models', { headers: { Authorization: 'Bearer '+API_KEY } })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+        AVAILABLE_MODELS = (data.data||[]).sort(function(a,b){ return a.name.localeCompare(b.name); });
+        modelPricing = {};
+        for (var i=0;i<AVAILABLE_MODELS.length;i++) {
+            var m = AVAILABLE_MODELS[i];
+            if (m.pricing) modelPricing[m.id] = { input: parseFloat(m.pricing.prompt)||0, output: parseFloat(m.pricing.completion)||0 };
+        }
+        var input = document.getElementById('modelSearchInput');
+        var chat = getCurrentChat();
+        if (chat&&chat.model) {
+            var found = null;
+            for (var i=0;i<AVAILABLE_MODELS.length;i++) if (AVAILABLE_MODELS[i].id===chat.model) { found=AVAILABLE_MODELS[i]; break; }
+            if (found) { input.value=found.name; input.dataset.modelId=found.id; selectedModelId=found.id; document.getElementById('currentModelHeader').textContent=found.name; }
+        }
+        if (!selectedModelId&&AVAILABLE_MODELS.length) selectModelFromDropdown(AVAILABLE_MODELS[0].id);
+    })
+    .catch(function(e){ showToast('Failed to load models'); });
+}
+
+function setupScrollDetector() {
+    document.getElementById('messages').addEventListener('scroll', function(){
+        var c = this;
+        var fab = document.getElementById('scrollFab');
+        var near = c.scrollHeight - c.scrollTop - c.clientHeight < 200;
+        fab.classList.toggle('show', autoScroll && !near);
+    });
+}
+
+// ---- Chat Management ----
+function newChat() {
+    var chat = { id:'chat_'+Date.now(), title:'New Chat', model:selectedModelId||'openai/gpt-4o', messages:[], createdAt:new Date().toISOString() };
+    conversations.unshift(chat);
+    saveConversations();
+    loadChat(chat.id);
+}
+
+function loadChat(id) {
+    if (id===currentChatId) return;
+    currentChatId = id;
+    var chat = getCurrentChat();
+    if (!chat) return;
+    if (chat.model) {
+        var found = null;
+        for (var i=0;i<AVAILABLE_MODELS.length;i++) if (AVAILABLE_MODELS[i].id===chat.model) { found=AVAILABLE_MODELS[i]; break; }
+        var input = document.getElementById('modelSearchInput');
+        if (found) { input.value=found.name; input.dataset.modelId=found.id; selectedModelId=found.id; document.getElementById('currentModelHeader').textContent=found.name; }
+        else { input.value=chat.model; input.dataset.modelId=chat.model; selectedModelId=chat.model; }
+    }
+    renderMessages(chat.messages);
+    renderChatHistory();
+    updateTokenDisplay();
+    document.getElementById('scrollFab').classList.remove('show');
+}
+
+function renderChatHistory() {
+    var container = document.getElementById('chatHistory');
+    var qInput = document.getElementById('convSearch');
+    var q = qInput ? qInput.value.toLowerCase().trim() : '';
+    var filtered = [];
+    for (var i=0;i<conversations.length;i++) {
+        var c = conversations[i];
+        if (!q) { filtered.push(c); continue; }
+        if (c.title.toLowerCase().indexOf(q)!==-1) { filtered.push(c); continue; }
+        var found = false;
+        for (var j=0;j<c.messages.length;j++) if (c.messages[j].content&&c.messages[j].content.toLowerCase().indexOf(q)!==-1) { found=true; break; }
+        if (found) filtered.push(c);
+    }
+    if (filtered.length===0) { container.innerHTML='<div class="text-xs text-gray-500 text-center py-4">No conversations found</div>'; return; }
+    var html = '';
+    for (var i=0;i<filtered.length;i++) {
+        var c = filtered[i];
+        var active = c.id===currentChatId ? ' bg-gray-800' : '';
+        html += '<div onclick="loadChat(\''+c.id+'\')" class="px-4 py-3 rounded-2xl cursor-pointer hover:bg-gray-800 transition'+active+'">';
+        html += '<div class="line-clamp-1 text-sm">'+sanitizeHTML(c.title)+'</div>';
+        html += '<div class="text-xs text-gray-500">'+new Date(c.createdAt).toLocaleDateString()+'</div></div>';
+    }
+    container.innerHTML = html;
+}
+
+function cancelStream() {
+    if (abortController) { abortController.abort(); abortController=null; showToast('Canceled'); }
+}
+
+function quickPrompt(text) {
+    document.getElementById('userInput').value = text;
+    var es = document.getElementById('emptyState');
+    if (es) es.style.display = 'none';
+    sendMessage();
+}
+
+// ---- Undo ----
+function pushUndo(filename, code, desc) {
+    evolutionUndoStack.push({ time:Date.now(), filename:filename, code:code, description:desc });
+    document.getElementById('undoBtn').style.color = '#6ee7b7';
+    document.getElementById('undoBtn').title = 'Undo: '+(desc||filename);
+    showToast('Saved to undo stack');
+}
+
+function undoLastWrite() {
+    if (!evolutionUndoStack.length) { showToast('Nothing to undo'); return; }
+    var last = evolutionUndoStack.pop();
+    if (!evolutionUndoStack.length) { document.getElementById('undoBtn').style.color=''; document.getElementById('undoBtn').title='Undo last evolution write'; }
+    if (last.code) { downloadNewVersion(last.code, 'chatseed-undo-'+last.filename); showToast('Undone: '+(last.description||last.filename)); }
+}
+
+// ---- Rendering ----
+function createEmptyState() {
+    var div = document.createElement('div');
+    div.id = 'emptyState';
+    div.className = 'empty-state flex flex-col items-center justify-center h-full text-center px-8';
+    div.innerHTML = '<i class="fas fa-seedling text-emerald-600 text-5xl mb-4"></i>' +
+        '<h2 class="text-gray-300 font-medium mb-2">Start a conversation</h2>' +
+        '<p class="text-gray-500 text-sm mb-6">Send a message or try one of these:</p>' +
+        '<div class="space-y-2 w-full max-w-md">' +
+        '<div class="suggestion" onclick="quickPrompt(\'Read your code and report what you see\')"><i class="fas fa-code text-emerald-500 mr-2"></i> Read source code</div>' +
+        '<div class="suggestion" onclick="quickPrompt(\'Read your code and add a dark/light theme toggle\')"><i class="fas fa-palette text-emerald-500 mr-2"></i> Add a feature</div>' +
+        '<div class="suggestion" onclick="quickPrompt(\'Analyze your code for security issues\')"><i class="fas fa-shield text-emerald-500 mr-2"></i> Security audit</div>' +
+        '<div class="suggestion" onclick="quickPrompt(\'What can you do with the evolve_self tool?\')"><i class="fas fa-magic text-emerald-500 mr-2"></i> Explain capabilities</div></div>';
+    return div;
+}
+
+function createMessageElement(msg) {
+    if (msg.role==='tool') return null;
+    var isUser = msg.role==='user';
+    var isTC = msg.role==='assistant' && msg.tool_calls && msg.tool_calls.length>0;
+    var w = document.createElement('div');
+    w.className = 'flex '+(isUser?'justify-end':'justify-start')+' msg-appear';
+    var b = document.createElement('div');
+    b.className = (isUser?'user-msg text-white':'assistant-msg')+' max-w-[80%] px-6 py-4 prose prose-invert';
+    if (isUser) {
+        b.textContent = msg.content||'';
+        b.style.whiteSpace = 'pre-wrap';
+    } else if (isTC) {
+        var html = '';
+        for (var i=0;i<msg.tool_calls.length;i++) {
+            var tc = msg.tool_calls[i];
+            var label = 'Calling tool...';
+            var detail = '';
+            try {
+                var args = JSON.parse(tc.function.arguments);
+                var labels = {read:'Reading source code...', analyze:'Analyzing source code...', diff:'Computing diff...', refactor:'Refactoring...', write:'Writing...'};
+                label = labels[args.action] || ('Executing '+(args.action||'?')+'...');
+                detail = args.description || args.new_filename || 'Processing...';
+            } catch(e) { label = 'Executing: '+(tc.function.name||'unknown'); }
+            html += '<div class="tool-call-badge"><i class="fas fa-cog fa-spin"></i> '+label+'</div>';
+            if (detail) html += '<div class="tool-result">'+sanitizeHTML(detail)+'</div>';
+        }
+        html += '<div class="msg-ts">'+(msg.timestamp||getTimeStr())+'</div>';
+        b.innerHTML = html;
+    } else {
+        b.innerHTML = renderMarkdown(msg.content||'') + (msg.timestamp?'<div class="msg-ts">'+msg.timestamp+'</div>':'');
+    }
+    w.appendChild(b);
+    return w;
+}
+
+function renderMessages(messages) {
+    var container = document.getElementById('messages');
+    container.innerHTML = '';
+    if (!messages||messages.length===0) { container.appendChild(createEmptyState()); return; }
+    for (var i=0;i<messages.length;i++) { var el = createMessageElement(messages[i]); if (el) container.appendChild(el); }
+    attachCopyButtons();
+    if (autoScroll) setTimeout(function(){ scrollToBottom(false); }, 10);
+}
+
+function attachCopyButtons() {
+    var pres = document.querySelectorAll('.prose pre');
+    for (var i=0;i<pres.length;i++) {
+        var pre = pres[i];
+        if (pre.querySelector('.copy-btn')) continue;
+        var btn = document.createElement('button');
+        btn.className = 'copy-btn';
+        btn.innerHTML = '<i class="fas fa-copy"></i> Copy';
+        btn.onclick = (function(p,b){ return function(){
+            var code = (p.querySelector('code')&&p.querySelector('code').textContent)||p.textContent;
+            navigator.clipboard.writeText(code.trim()).then(function(){ b.innerHTML='<i class="fas fa-check"></i> Copied!'; setTimeout(function(){ b.innerHTML='<i class="fas fa-copy"></i> Copy'; },2000); });
+        }; })(pre, btn);
+        pre.style.position = 'relative';
+        pre.appendChild(btn);
+    }
+}
+
+// ---- Streaming ----
+function startStreamingBubble() {
+    removeStreamingBubble();
+    var container = document.getElementById('messages');
+    var wrapper = document.createElement('div');
+    wrapper.className = 'flex justify-start msg-appear';
+    wrapper.id = 'stream-container';
+    var bubble = document.createElement('div');
+    bubble.className = 'assistant-msg max-w-[80%] px-6 py-4 prose prose-invert';
+    var contentDiv = document.createElement('div');
+    contentDiv.className = 'streaming-cursor';
+    bubble.appendChild(contentDiv);
+    var ts = document.createElement('div');
+    ts.className = 'msg-ts';
+    ts.textContent = getTimeStr();
+    bubble.appendChild(ts);
+    wrapper.appendChild(bubble);
+    container.appendChild(wrapper);
+    streamBubble = contentDiv;
+    if (autoScroll) scrollToBottom();
+}
+
+function updateStreamingContent(html) {
+    if (!streamBubble) return;
+    streamBubble.innerHTML = html;
+    if (autoScroll) scrollToBottom(false);
+}
+
+function removeStreamingBubble() {
+    var el = document.getElementById('stream-container');
+    if (el) el.remove();
+    streamBubble = null;
+}
+
+// ---- Step Bar ----
+function addStepBar(num, max, icon, label) {
+    var old = document.getElementById('step-bar');
+    if (old) old.remove();
+    var bar = document.createElement('div');
+    bar.id = 'step-bar';
+    bar.className = 'step-bar pulse';
+    bar.innerHTML = '<i class="fas '+icon+' fa-fw"></i><span class="step-label">'+label+'</span><span class="step-count">Step '+num+'/'+max+'</span>';
+    document.getElementById('messages').appendChild(bar);
+    if (autoScroll) scrollToBottom();
+}
+
+function removeStepBar() {
+    var el = document.getElementById('step-bar');
+    if (el) el.remove();
+}
+
+// ---- Multi-Step Evolution ----
+async function sendMessage() {
+    if (isProcessing) return;
+    var input = document.getElementById('userInput');
+    var text = input.value.trim();
+    if (!text||!currentChatId) return;
+    var chat = getCurrentChat();
+    if (!chat) return;
+
+    chat.messages.push({ role:"user", content:text, timestamp:getTimeStr() });
+    var uc = 0;
+    for (var i=0;i<chat.messages.length;i++) if (chat.messages[i].role==='user') uc++;
+    if (uc===1) chat.title = text.slice(0,50)+(text.length>50?'...':'');
+
+    input.value = '';
+    isProcessing = true;
+    abortController = new AbortController();
+
+    document.getElementById('sendBtn').classList.add('hidden');
+    document.getElementById('cancelBtn').classList.remove('hidden');
+
+    var es = document.getElementById('emptyState');
+    if (es) es.remove();
+
+    var container = document.getElementById('messages');
+    var uel = createMessageElement(chat.messages[chat.messages.length-1]);
+    if (uel) container.appendChild(uel);
+    renderChatHistory();
+
+    var MAX_STEPS = 10, stepCount = 0;
+
+    try {
+        while (stepCount < MAX_STEPS) {
+            stepCount++;
+            addStepBar(stepCount, MAX_STEPS, 'fa-brain', 'Thinking...');
+
+            var sysP = getSystemPrompt();
+            var apiMsgs = sysP ? [{role:"system",content:sysP}] : [];
+            for (var i=0;i<chat.messages.length;i++) apiMsgs.push(chat.messages[i]);
+
+            var res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method:'POST',
+                headers:{ 'Authorization':'Bearer '+API_KEY, 'Content-Type':'application/json', 'HTTP-Referer':window.location.href, 'X-Title':'ChatSeed' },
+                body:JSON.stringify({ model:selectedModelId||'openai/gpt-4o', messages:apiMsgs, tools:[SELF_EVOLUTION_TOOL], tool_choice:"auto", stream:true }),
+                signal:abortController.signal
+            });
+            if (!res.ok) throw new Error('API '+res.status);
+
+            var reader = res.body.getReader();
+            var decoder = new TextDecoder();
+            var buf = '', fullContent = '', toolCalls = [];
+            var rt = null;
+
+            startStreamingBubble();
+
+            while (true) {
+                var r = await reader.read();
+                if (r.done) break;
+                buf += decoder.decode(r.value, {stream:true});
+                var lines = buf.split('\n');
+                buf = lines.pop()||'';
+                for (var li=0;li<lines.length;li++) {
+                    var line = lines[li];
+                    if (line.indexOf('data: ')!==0) continue;
+                    var json = line.slice(6).trim();
+                    if (!json||json==='[DONE]') continue;
+                    try {
+                        var chunk = JSON.parse(json);
+                        var d = (chunk.choices&&chunk.choices[0]) ? (chunk.choices[0].delta||{}) : {};
+                        if (d.content) {
+                            fullContent += d.content;
+                            if (!rt) rt = setTimeout(function(){ rt=null; updateStreamingContent(renderMarkdown(fullContent)); }, 30);
+                        }
+                        if (d.tool_calls) {
+                            for (var tci=0;tci<d.tool_calls.length;tci++) {
+                                var tc = d.tool_calls[tci];
+                                if (tc.function&&tc.function.name) {
+                                    var found = null;
+                                    for (var ei=0;ei<toolCalls.length;ei++) if (toolCalls[ei].index===(tc.index||0)) { found=toolCalls[ei]; break; }
+                                    if (found) found.function.arguments += tc.function.arguments||'';
+                                    else toolCalls.push({ index:tc.index||0, id:tc.id||('tc_'+Date.now()), type:'function', function:{name:tc.function.name, arguments:tc.function.arguments||''} });
+                                } else if (tc.function&&tc.function.arguments) {
+                                    for (var ei=0;ei<toolCalls.length;ei++) if (toolCalls[ei].index===(tc.index||0)) { toolCalls[ei].function.arguments+=tc.function.arguments; break; }
+                                }
+                            }
+                        }
+                        if (chunk.choices&&chunk.choices[0]&&(chunk.choices[0].finish_reason==='stop'||chunk.choices[0].finish_reason==='tool_calls')) break;
+                    } catch(e) {}
+                }
+            }
+            if (rt) { clearTimeout(rt); rt=null; }
+            if (fullContent) updateStreamingContent(renderMarkdown(fullContent));
+            removeStreamingBubble();
+
+            if (toolCalls.length>0) {
+                for (var tci=0;tci<toolCalls.length;tci++) {
+                    var tc = toolCalls[tci], args;
+                    try { args=JSON.parse(tc.function.arguments); } catch(e) { showToast('Failed to parse tool args'); continue; }
+                    var tcMsg = { role:"assistant", content:null, tool_calls:[{ id:tc.id, type:"function", function:{name:tc.function.name, arguments:tc.function.arguments} }], timestamp:getTimeStr() };
+                    chat.messages.push(tcMsg);
+                    var tcEl = createMessageElement(tcMsg);
+                    if (tcEl) container.appendChild(tcEl);
+                    try {
+                        if (args.action==="read") {
+                            addStepBar(stepCount, MAX_STEPS, 'fa-book-open', 'Reading source code...');
+                            var code = getCurrentSource();
+                            chat.messages.push({ role:"tool", tool_call_id:tc.id, content:'Here is my current full source code:\n\n```html\n'+code+'\n```' });
+                        } else if (args.action==="analyze") {
+                            addStepBar(stepCount, MAX_STEPS, 'fa-search', 'Analyzing source code...');
+                            var src = getCurrentSource(), sl = src.split('\n'), jc=0,hc=0;
+                            for (var si=0;si<sl.length;si++) { var t=sl[si].trim(); if (t.indexOf('function ')==0||t.indexOf('var ')==0||t.indexOf('let ')==0||t.indexOf('const ')==0||t.indexOf('=>')!==-1) jc++; if (t.indexOf('<')!==-1) hc++; }
+                            var a = '## Code Analysis\n\n- **Total lines:** '+sl.length+'\n- **Characters:** '+src.length+'\n- **JS lines:** '+jc+'\n- **HTML lines:** '+hc+'\n\n### Suggestions\n'+(args.description||'Done.');
+                            chat.messages.push({ role:"tool", tool_call_id:tc.id, content:a });
+                        } else if (args.action==="diff") {
+                            addStepBar(stepCount, MAX_STEPS, 'fa-code-compare', 'Computing diff...');
+                            chat.messages.push({ role:"tool", tool_call_id:tc.id, content:'## Proposed Changes\n\n'+(args.description||'No description.')+'\n\n```diff\n+ See description\n```' });
+                        } else if (args.action==="refactor") {
+                            addStepBar(stepCount, MAX_STEPS, 'fa-wrench', 'Refactoring...');
+                            if (args.new_code) { downloadNewVersion(args.new_code, args.new_filename||"chatseed-refactored.html"); pushUndo(args.new_filename||"chatseed-refactored.html", getCurrentSource(), args.description||'Refactor'); chat.messages.push({ role:"tool", tool_call_id:tc.id, content:'Refactored: '+(args.new_filename||'done')+' - '+(args.description||'') }); }
+                            else { chat.messages.push({ role:"tool", tool_call_id:tc.id, content:'Refactor requested but no code.' }); }
+                        } else if (args.action==="write"&&args.new_code) {
+                            addStepBar(stepCount, MAX_STEPS, 'fa-wand-magic-sparkles', 'Writing: '+(args.new_filename||'new version'));
+                            downloadNewVersion(args.new_code, args.new_filename||"chatseed-evolved.html");
+                            pushUndo(args.new_filename||"chatseed-evolved.html", getCurrentSource(), args.description||'Write');
+                            chat.messages.push({ role:"tool", tool_call_id:tc.id, content:'Write: "'+(args.new_filename||'chatseed-evolved.html')+'" - '+(args.description||'') });
+                        } else {
+                            chat.messages.push({ role:"tool", tool_call_id:tc.id, content:'Unknown action "'+(args.action||'?')+'".' });
+                        }
+                    } catch(terr) { chat.messages.push({ role:"tool", tool_call_id:tc.id, content:'Error: '+terr.message }); showToast('Tool error'); }
+                }
+            } else if (fullContent) {
+                var finalMsg = { role:"assistant", content:fullContent, timestamp:getTimeStr() };
+                chat.messages.push(finalMsg);
+                var el = createMessageElement(finalMsg);
+                if (el) container.appendChild(el);
+                break;
+            } else {
+                addStepBar(stepCount, MAX_STEPS, 'fa-exclamation-triangle', 'Retrying without streaming...');
+                try {
+                    var sysP2 = getSystemPrompt();
+                    var am2 = sysP2 ? [{role:"system",content:sysP2}] : [];
+                    for (var i=0;i<chat.messages.length;i++) am2.push(chat.messages[i]);
+                    var fb = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                        method:'POST', headers:{ 'Authorization':'Bearer '+API_KEY, 'Content-Type':'application/json' },
+                        body:JSON.stringify({ model:selectedModelId||'openai/gpt-4o', messages:am2, tools:[SELF_EVOLUTION_TOOL], tool_choice:"auto", stream:false })
+                    });
+                    if (!fb.ok) throw new Error('FB '+fb.status);
+                    var fd = await fb.json();
+                    var fm = fd.choices&&fd.choices[0]?fd.choices[0].message:null;
+                    if (fm&&fm.tool_calls&&fm.tool_calls.length) {
+                        for (var fi=0;fi<fm.tool_calls.length;fi++) {
+                            var ft = fm.tool_calls[fi], fa; try { fa=JSON.parse(ft.function.arguments); } catch(e) { continue; }
+                            var ftm = { role:"assistant", content:null, tool_calls:[ft], timestamp:getTimeStr() };
+                            chat.messages.push(ftm);
+                            var fte = createMessageElement(ftm);
+                            if (fte) container.appendChild(fte);
+                            if (fa.action==="read") chat.messages.push({ role:"tool", tool_call_id:ft.id, content:'Source code:\n```html\n'+getCurrentSource()+'\n```' });
+                            else if (fa.action==="analyze") chat.messages.push({ role:"tool", tool_call_id:ft.id, content:'Analysis: '+(fa.description||'Done.') });
+                            else if ((fa.action==="write"||fa.action==="refactor")&&fa.new_code) { downloadNewVersion(fa.new_code, fa.new_filename); pushUndo(fa.new_filename||"chatseed-evolved.html", getCurrentSource(), fa.description||fa.action); chat.messages.push({ role:"tool", tool_call_id:ft.id, content:(fa.action==='write'?'Write':'Refactored')+': '+(fa.new_filename||'done') }); }
+                            else chat.messages.push({ role:"tool", tool_call_id:ft.id, content:(fa.action||'Done')+': '+(fa.description||'') });
+                        }
+                    } else {
+                        var ff = { role:"assistant", content:(fm&&fm.content)||"", timestamp:getTimeStr() };
+                        chat.messages.push(ff);
+                        var fe = createMessageElement(ff);
+                        if (fe) container.appendChild(fe);
+                        break;
+                    }
+                } catch(fbe) { showToast('Fallback failed: '+fbe.message); break; }
+            }
+            removeStepBar();
+            saveConversations();
+            updateTokenDisplay();
+        }
+        removeStepBar();
+        saveConversations();
+        updateTokenDisplay();
+        attachCopyButtons();
+        if (stepCount>=MAX_STEPS) showToast('Max steps (10) reached');
+        else if (stepCount>0) showToast('Complete');
+    } catch(err) {
+        removeStepBar(); removeStreamingBubble();
+        if (err.name==='AbortError') showToast('Canceled');
+        else { console.error(err); showToast('Error: '+err.message); }
+    } finally {
+        isProcessing=false; abortController=null;
+        document.getElementById('sendBtn').classList.remove('hidden');
+        document.getElementById('cancelBtn').classList.add('hidden');
+    }
+}
+
+function saveConversations() {
+    try { localStorage.setItem('chatseed_conversations', JSON.stringify(conversations)); } catch(e) {}
+}
+
+function deleteCurrentChat() {
+    if (!currentChatId||!confirm('Delete this conversation?')) return;
+    var nu = [];
+    for (var i=0;i<conversations.length;i++) if (conversations[i].id!==currentChatId) nu.push(conversations[i]);
+    conversations = nu;
+    saveConversations(); currentChatId=null;
+    if (conversations.length) loadChat(conversations[0].id); else newChat();
+}
+
+function exportChat() {
+    var chat = getCurrentChat();
+    if (!chat) return;
+    var ds = JSON.stringify(chat, null, 2);
+    var du = 'data:application/json;charset=utf-8,'+encodeURIComponent(ds);
+    var a = document.createElement('a');
+    a.href = du; a.download = chat.title.replace(/[^a-z0-9]/gi,'_')+'.json';
+    a.click();
+}
+
+// ---- Event Listeners ----
+document.getElementById('userInput').addEventListener('keydown', function(e){
+    if (e.key==='Enter'&&!e.shiftKey) { e.preventDefault(); sendMessage(); }
+    if (e.key==='Escape'&&isProcessing) cancelStream();
+});
+
+window.onload = init;
+</script>
+</body></html>
