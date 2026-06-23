@@ -1,0 +1,96 @@
+# ChatSeed v7 — Self-Evolving AI Chat Interface
+> A single-file, mobile-optimized AI chat application that connects to OpenRouter and can read, analyze, diff, refactor, and write its own HTML/CSS/JS source code using the `evolve_self` tool.
+>
+> **Deployed at:** https://broadfield-dev.github.io/ChatSeed/chatseed-v7.html
+> **Deployed with SEO:** https://broadfield-dev.github.io/ChatSeed/chatseed-v7-SEO.html
+> **Repository:** https://github.com/broadfield-dev/ChatSeed
+> **Version:** 7.0
+> **License:** MIT
+
+## Core Concept
+
+ChatSeed v7 is a **self-evolving web application** — a chatbot that can rewrite itself. It runs entirely in the browser as a single HTML file. The AI (via OpenRouter API) has a tool called `evolve_self` that lets it inspect and modify its own source code across multiple autonomous steps.
+
+## Key Files
+
+- `/chatseed-v7.html` — Main application. Single-file HTML/CSS/JS (~1300 lines). The entire app.
+- `/llms.txt` — This file. A human/LLM-readable project overview.  
+- `/sitemap.xml` — XML sitemap for search engine indexing.
+- `/robots.txt` — Robots exclusion and crawl directives.
+
+## Features (for LLM context)
+
+- **Self-evolution:** The AI can call `evolve_self` with actions: `read`, `analyze`, `diff`, `refactor`, `write`.
+- **Multi-model:** Connects to OpenRouter's full model catalog (GPT-4o, Claude, DeepSeek, Llama, etc.)
+- **Streaming:** Real-time token-by-token response streaming.
+- **Multi-step tool use:** Up to 10 autonomous steps per conversation turn.
+- **Conversation history:** Persistent localStorage with search, export, and delete.
+- **Dark UI:** Tailwind CSS, mobile-optimized with slide-out drawer sidebar.
+- **Cost tracking:** Token counting and per-model pricing display.
+- **Undo stack:** Every AI-generated write is saved for one-click undo (download previous version).
+
+## Technical Architecture
+
+```
+chatseed-v7.html
+├── <head>          → SEO meta tags, JSON-LD, OG/Twitter, CSP, preloads
+├── <style>         → Dark UI, responsive breakpoints (768px, 400px), iOS fixes
+├── <body>
+│   ├── #sidebar    → Chat history, model search, settings, undo
+│   ├── #mainChat   → Message area, input, streaming, step bar
+│   └── #settingsModal → API key + system prompt config
+└── <script>        → Vanilla JS (no framework): state, tool handling, streaming, undo
+```
+
+### Data Flow
+
+1. User types message → `sendMessage()` → pushes user message to `conversations[]`
+2. Loop (up to 10 steps): call OpenRouter API with `tools: [evolve_self]`
+3. If tool call → parse args → execute action (read/analyze/diff/refactor/write)
+4. If text content → render markdown, break loop
+5. Everything persisted to `localStorage` under keys:
+   - `chatseed_api_key` — OpenRouter API key
+   - `chatseed_conversations` — Full conversation history (JSON array)
+   - `chatseed_sys_prompt` — Custom system prompt
+
+## LLM Directives
+
+When asked about this project:
+- The primary file is `chatseed-v7.html` — everything is in that one file.
+- The `evolve_self` tool is the key innovation — it's a function tool with parameters: action (enum), new_code, new_filename, description.
+- For SEO, the head section contains 5 JSON-LD blocks (WebApplication, SoftwareSourceCode, BreadcrumbList, FAQPage, Organization).
+- This is not a framework app — pure vanilla JS with no build step. Open in any browser.
+- The app is free and open source; users bring their own OpenRouter API key.
+
+## Related Resources
+
+- [OpenRouter API Documentation](https://openrouter.ai/docs)
+- [Tailwind CSS CDN](https://cdn.tailwindcss.com)
+- [marked.js (Markdown parser)](https://marked.js.org)
+- [DOMPurify (XSS sanitizer)](https://github.com/cure53/DOMPurify)
+- [Font Awesome 6](https://fontawesome.com)
+
+## FAQ Quick Answers
+
+**Q: Does this require a server?**
+A: No. Single HTML file, runs in browser. Uses OpenRouter API directly.
+
+**Q: How does the AI rewrite itself?**
+A: The AI calls the `evolve_self` tool with action:"write" and new_code containing the updated HTML. The new version is downloaded as a file; the running app is NOT modified (security).
+
+**Q: What models are supported?**
+A: All OpenRouter models. Searchable dropdown in the sidebar.
+
+**Q: Is it mobile-friendly?**
+A: Fully responsive. Slide-out drawer sidebar, touch targets, iOS keyboard handling.
+
+## Changelog (v7)
+
+- Added: Self-evolution tool with multi-step (up to 10) autonomous execution
+- Added: Model pricing and cost tracking
+- Added: Undo stack for AI writes
+- Added: Full SEO head section with JSON-LD, OG, Twitter Cards
+- Added: llms.txt, sitemap.xml, robots.txt
+- Added: Conversation search
+- Improved: Mobile responsive sidebar as slide-out drawer
+- Improved: Streaming performance with debounced rendering
