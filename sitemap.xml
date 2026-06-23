@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- ============================================================ -->
+<!--  CHATSEED v7 — XML SITEMAP                                   -->
+<!--  Generated: 2025-06-22                                       -->
+<!--  Last mod: auto-update on each deployment                    -->
+<!--  Priority: homepage > project pages > assets                 -->
+<!-- ============================================================ -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"
+        xmlns:video="http://www.google.com/schemas/sitemap-video/1.1"
+        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"
+        xmlns:mobile="http://www.google.com/schemas/sitemap-mobile/1.0">
+
+  <!-- ========================================================= -->
+  <!--  MAIN LANDING PAGE — HIGHEST PRIORITY                     -->
+  <!-- ========================================================= -->
+  <url>
+    <loc>https://broadfield-dev.github.io/ChatSeed/</loc>
+    <lastmod>2025-06-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://broadfield-dev.github.io/ChatSeed/"/>
+  </url>
+
+  <!-- ========================================================= -->
+  <!--  CHATSEED v7 — PRIMARY APPLICATION PAGE                    -->
+  <!-- ========================================================= -->
+  <url>
+    <loc>https://broadfield-dev.github.io/ChatSeed/chatseed-v7.html</loc>
+    <lastmod>2025-06-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://broadfield-dev.github.io/ChatSeed/chatseed-v7.html"/>
+    <image:image>
+      <image:loc>https://raw.githubusercontent.com/broadfield-dev/ChatSeed/refs/heads/main/assets/1200x628.jpg</image:loc>
+      <image:caption>ChatSeed v7 Self-Evolving AI Chat Interface — Dark UI</image:caption>
+      <image:title>ChatSeed v7 Screenshot</image:title>
+      <image:geo_location>Global</image:geo_location>
+    </image:image>
+    <image:image>
+      <image:loc>https://raw.githubusercontent.com/broadfield-dev/ChatSeed/refs/heads/main/assets/1200x628.jpg</image:loc>
+      <image:caption>ChatSeed v7 Twitter Card — AI Chat App</image:caption>
+      <image:title>ChatSeed v7 Twitter Preview</image:title>
+    </image:image>
+  </url>
+
+  <!-- ========================================================= -->
+  <!--  PROJECT / GITHUB — INDEXED BUT LOW PRIORITY               -->
+  <!-- ========================================================= -->
+  <url>
+    <loc>https://github.com/broadfield-dev/chatseed</loc>
+    <lastmod>2025-06-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+
+  <url>
+    <loc>https://github.com/broadfield-dev/chatseed/blob/main/chatseed-v7.html</loc>
+    <lastmod>2025-06-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+
+  <url>
+    <loc>https://github.com/broadfield-dev/chatseed#readme</loc>
+    <lastmod>2025-06-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
+  </url>
+
+  <!-- ========================================================= -->
+  <!--  SUPPORTING FILES — robots.txt, sitemap.xml, llms.txt      -->
+  <!-- ========================================================= -->
+  <url>
+    <loc>https://broadfield-dev.github.io/ChatSeed/llms.txt</loc>
+    <lastmod>2025-06-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+
+  <url>
+    <loc>https://broadfield-dev.github.io/ChatSeed/robots.txt</loc>
+    <lastmod>2025-06-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+
+  <url>
+    <loc>https://broadfield-dev.github.io/ChatSeed/sitemap.xml</loc>
+    <lastmod>2025-06-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+
+  <!-- ========================================================= -->
+  <!--  IMAGES — IF HOSTED SEPARATELY ON YOUR-DOMAIN              -->
+  <!-- ========================================================= -->
+  <url>
+    <loc>https://raw.githubusercontent.com/broadfield-dev/ChatSeed/refs/heads/main/assets/1200x628.jpg</loc>
+    <lastmod>2025-06-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.3</priority>
+  </url>
+
+  <url>
+    <loc>https://raw.githubusercontent.com/broadfield-dev/ChatSeed/refs/heads/main/assets/1200x628.jpg</loc>
+    <lastmod>2025-06-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.2</priority>
+  </url>
+
+  <url>
+    <loc>https://raw.githubusercontent.com/broadfield-dev/ChatSeed/refs/heads/main/assets/1200x628.jpg</loc>
+    <lastmod>2025-06-22</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.2</priority>
+  </url>
+
+</urlset>
+<!-- ============================================================ -->
+<!--  END SITEMAP                                                  -->
+<!--  Replace YOUR-DOMAIN.com and broadfield-dev before deploying   -->
+<!-- ============================================================ -->
