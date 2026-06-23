@@ -1,4 +1,4 @@
-# 🌱 ChatSeed v6
+# 🌱 ChatSeed
 
 **A self-evolving AI chat interface that can read, analyze, and rewrite its own source code.**
 
@@ -7,6 +7,8 @@ ChatSeed is a single-file HTML application that connects to OpenRouter's API to 
 ![Preview](https://img.shields.io/badge/status-active-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![OpenRouter](https://img.shields.io/badge/powered%20by-OpenRouter-059669)
+
+![Screenshot](https://raw.githubusercontent.com/broadfield-dev/ChatSeed/refs/heads/main/assets/1200x628.jpg)
 
 ---
 
@@ -40,11 +42,11 @@ ChatSeed uses [OpenRouter](https://openrouter.ai/) to access hundreds of AI mode
 
 **Option A: Open directly**
 
-Just open `chatseed-v6.html` in your browser — no server required!
+Just open `chatseed-v7.html` in your browser — no server required!
 
 **Option B: Host on GitHub Pages**
 
-1. Push `chatseed-v6.html` to a GitHub repository
+1. Push `chatseed-v7.html` to a GitHub repository
 2. Enable GitHub Pages in repo settings
 3. Access your instance at `https://<username>.github.io/<repo>/`
 
@@ -98,7 +100,7 @@ The AI can perform complex evolution tasks across **up to 10 steps**, each displ
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│ 🌱 ChatSeed v6                 ⚙️ Settings          │
+│ 🌱 ChatSeed                   ⚙️ Settings          │
 ├─────────────────────────────────────────────────────┤
 │  ┌─── Sidebar ─────────────────┐                    │
 │  │ [+] New Chat                │  Chat messages      │
@@ -138,7 +140,7 @@ The AI can perform complex evolution tasks across **up to 10 steps**, each displ
 - Tool calls are executed in a multi-step loop (up to 10 iterations)
 
 ### Files
-- **`chatseed-v6.html`** — The entire application in a single file (no other files needed!)
+- **`chatseed-v7.html`** — The entire application in a single file (no other files needed!)
 
 ---
 
@@ -165,7 +167,7 @@ The AI can perform complex evolution tasks across **up to 10 steps**, each displ
 A: No. Your key is stored locally and sent only to `openrouter.ai`.
 
 **Q: Can the AI break itself?**  
-A: The AI can propose code changes, but they're always downloaded as new files. The original `chatseed-v6.html` remains untouched unless you explicitly replace it.
+A: The AI can propose code changes, but they're always downloaded as new files. The original `chatseed-v7.html` remains untouched unless you explicitly replace it.
 
 **Q: What models are supported?**  
 A: Any model available on OpenRouter — including Claude, GPT-4, Gemini, DeepSeek, Llama, Mistral, and many more. The list is fetched dynamically from OpenRouter's API.
