@@ -94,3 +94,4 @@ A: Fully responsive. Slide-out drawer sidebar, touch targets, iOS keyboard handl
 - Added: Conversation search
 - Improved: Mobile responsive sidebar as slide-out drawer
 - Improved: Streaming performance with debounced rendering
+
