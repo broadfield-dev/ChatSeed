@@ -148,7 +148,7 @@ The AI can perform complex evolution tasks across **up to 10 steps**, each displ
 
 ## 🔒 Security Notes
 
-- Your API key is stored **only in your browser's LocalStorage** — it is never sent anywhere except directly to OpenRouter's API
+- Your API key is stored **only in your browser's LocalStorage** — it is never sent anywhere except directly to OpenRouter's API. The key persists in your browsers local storage, so use caution and delete local storage if using a shared device.
 - All user-generated content is sanitized via **DOMPurify** before rendering
 - The app runs entirely client-side — no backend server involved
 - When the AI rewrites code, it's always **saved as a new file** (the original is preserved)
