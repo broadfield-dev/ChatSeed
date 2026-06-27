@@ -3,7 +3,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>ChatSeed v10 - File Memmory</title>
+<title>ChatSeed v10 - File Memory</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
@@ -198,7 +198,7 @@ input,textarea,select{font-size:16px!important}
     <option value="localStorage">localStorage (default)</option>
     <option value="indexedDB">IndexedDB</option>
   </select>
-  <span id="storageModeLabel" class="text-xs text-gray-500 ml-2" style="min-width:80px"></span>
+  <span id="storageModeLabel" class="text-xs text-gray-500 ml-2" style="min-width:80px;color:#6ee7b7;">✓ Using localStorage</span>
 </div>
 <button class="btn" onclick="saveSettings()">Save Settings</button>
 <button class="btn btn-secondary" onclick="closeSettings()" style="margin-top:8px">Close</button>
@@ -222,7 +222,7 @@ input,textarea,select{font-size:16px!important}
 <span class="px-2 text-xs uppercase tracking-widest text-gray-500">Conversations</span>
 <div class="flex items-center gap-2"><span id="undoBtn" class="text-xs cursor-pointer hover:text-emerald-400" title="Undo last evolution write" onclick="undoLastWrite()" style="color:#6b7280"><i class="fas fa-undo"></i></span><span class="text-xs text-gray-500"><span id="totalTokens">0</span> tok</span></div></div>
 <div class="px-2"><input id="convSearch" class="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500 mb-1" type="text" placeholder="Search conversations..." oninput="renderChatHistory()"></div>
-<div id="chatHistory" class="flex-1 overflow-auto px-2 space-y-1"><div class="conv-item px-4 py-3 rounded-2xl cursor-pointer hover:bg-gray-800" data-chat-id="chat_1782447887580"><div class="line-clamp-1 text-sm flex items-center gap-1">check your code and describe your self evolve abil...</div><div class="text-xs text-gray-500 flex items-center justify-between"><span>6/25/2026</span></div></div></div>
+<div id="chatHistory" class="flex-1 overflow-auto px-2 space-y-1"></div>
 <div class="sidebar-footer px-4 pb-3 text-xs text-gray-500 text-center"><span class="kbd">Enter</span> send · <span class="kbd">Shift+Enter</span> newline · <span class="kbd">Esc</span> cancel</div>
 <div class="px-4 py-2 border-t border-gray-700"><div class="model-search-wrap">
 <input id="modelSearchInput" type="text" class="w-full bg-gray-800 border border-gray-600 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-emerald-500" placeholder="Search models..." autocomplete="off" onfocus="filterModelDropdown()" oninput="filterModelDropdown()" onblur="setTimeout(function(){closeModelDropdown()},200)" onkeydown="onModelKeydown(event)" data-model-id="">
@@ -261,7 +261,6 @@ input,textarea,select{font-size:16px!important}
 <button id="sendBtn" onclick="sendMessage()" class="send-btn bg-emerald-600 hover:bg-emerald-700 w-12 h-12 rounded-3xl flex items-center justify-center self-end shrink-0"><i class="fas fa-paper-plane"></i></button>
 <button id="cancelBtn" onclick="cancelStream()" class="cancel-btn bg-red-700 hover:bg-red-600 w-12 h-12 rounded-3xl flex items-center justify-center self-end shrink-0 hidden"><i class="fas fa-stop"></i></button>
 </div></div></div>
-</div>
 
 <div id="confirmModal" class="modal-overlay">
 <div class="modal-box" style="width:360px">
@@ -275,19 +274,7 @@ input,textarea,select{font-size:16px!important}
 <div id="toast" class="fixed bottom-6 right-6 bg-gray-800 border border-gray-600 rounded-2xl px-6 py-3 shadow-2xl z-50 hidden">Ready</div>
 <input type="file" id="fileInput" multiple="" style="display:none">
 
-
 <script>
-// ==== REPAIR LOG (v7) ====
-// v5 ALL FIXES PRESERVED (version numbering, storage routing, backup restore, etc.)
-// v6 FIX: write, write_file, write_source, refactor ALL accept args.new_code OR args.content
-// v7 FIX: read and set_target_file preserve main source access.
-//   The 'read' action always gets the true live source (getCurrentSource).
-//   'set_target_file' loads file content into LIVE_SOURCE but 'read_source' always gets the real source.
-//   'write_file' and 'write' call updateLiveSource so line edits work on the target.
-//   'write_source' always updates the main source.
-//   'read_lines', 'edit_lines', etc. operate on whatever LIVE_SOURCE currently holds.
-// v8 FIX: renderMarkdown escapes HTML to prevent rendering raw code in chat.
-//   ChatPad defaults to collapsed/closed. Files add silently without auto-show.
 
 var ChatPad = {
   _files:[],_order:[],_active:null,_visible:false,
@@ -686,7 +673,7 @@ var ModuleSystem={register:function(id,api){if(MODULE_REGISTRY[id])return;MODULE
 function rebuildCoreTools(){CORE_TOOLS=[SELF_EVOLUTION_TOOL];for(var id in MODULE_REGISTRY){var mod=MODULE_REGISTRY[id];if(!MODULE_STATES[id]||!MODULE_STATES[id].enabled)continue;if(mod.tools)CORE_TOOLS=CORE_TOOLS.concat(mod.tools);}}
 function toggleModulesAccordion(){modulesAccordionOpen=!modulesAccordionOpen;var body=document.getElementById("modulesAccordionBody"),arrow=document.getElementById("modulesAccordionArrow");if(modulesAccordionOpen){body.style.maxHeight=body.scrollHeight+"px";body.classList.add("open");arrow.classList.add("open");}else{body.style.maxHeight="0";body.classList.remove("open");arrow.classList.remove("open");}}
 function updateActiveModuleCount(){var el=document.getElementById("activeModuleCount");if(!el)return;var count=0;for(var id in MODULE_STATES)if(MODULE_STATES[id].enabled)count++;el.textContent=count+" active";}
-var SELF_EVOLUTION_TOOL={type:"function",function:{name:"evolve_self",description:"Read, analyze, diff, refactor, write, or perform LINE-LEVEL edits. Use write_file for versioned files, read_file to view any file, set_target_file to switch editing target. write and write_file now also update live source so line edits work on them. 'read' always accesses the MAIN live source. 'read_source' is an alias for reading the main source.",parameters:{type:"object",properties:{action:{type:"string",enum:["read","analyze","diff","refactor","write","write_source","write_file","read_lines","edit_lines","insert_lines","delete_lines","append_lines","search_code","list_files","read_file","set_target_file"],description:"What to do. write/write_file accept new_code OR content."},description:{type:"string"},new_code:{type:"string"},new_filename:{type:"string"},target_filename:{type:"string"},start_line:{type:"number"},end_line:{type:"number"},line_number:{type:"number"},content:{type:"string"},pattern:{type:"string"},is_regex:{type:"boolean"}},required:["action","description"]}}};CORE_TOOLS=[SELF_EVOLUTION_TOOL];
+var SELF_EVOLUTION_TOOL={type:"function",function:{name:"evolve_self",description:"Read, analyze, diff, refactor, write, or perform LINE-LEVEL edits. Use write_file for versioned files, read_file to view any file, set_target_file to switch editing target. write and write_file now also update live source so line edits work on them. 'read' always accesses the MAIN live source.",parameters:{type:"object",properties:{action:{type:"string",enum:["read","analyze","diff","refactor","write","write_source","write_file","read_lines","edit_lines","insert_lines","delete_lines","append_lines","search_code","list_files","read_file","set_target_file"],description:"What to do. write/write_file accept new_code OR content."},description:{type:"string"},new_code:{type:"string"},new_filename:{type:"string"},target_filename:{type:"string"},start_line:{type:"number"},end_line:{type:"number"},line_number:{type:"number"},content:{type:"string"},pattern:{type:"string"},is_regex:{type:"boolean"}},required:["action","description"]}}};CORE_TOOLS=[SELF_EVOLUTION_TOOL];
 
 async function loadExternalModules(){try{await new Promise(function(resolve,reject){var s=document.createElement('script');s.src='./modules/modules_manifest.js';s.async=false;s.onload=resolve;s.onerror=reject;document.body.appendChild(s);});var manifest=window.__CHATSEED_MODULES_MANIFEST;if(!manifest||!manifest.modules||!manifest.modules.length){loadFallbackModules();return;}var mods=manifest.modules,loaded=0;for(var i=0;i<mods.length;i++){var info=mods[i];if(MODULE_LOADED_FILES[info.id])continue;MODULE_LOADED_FILES[info.id]=true;try{var script=document.createElement('script');script.src='./modules/'+info.file;script.async=false;script.setAttribute('data-module',info.id);await new Promise(function(resolve,reject){script.onload=resolve;script.onerror=reject;document.body.appendChild(script);});loaded++;}catch(ex){}}renderModuleList();updateActiveModuleCount();if(loaded>0)showToast('Loaded '+loaded+' modules');else loadFallbackModules();}catch(ex){loadFallbackModules();}}
 function reloadModules(){showToast('Reloading...');for(var id in MODULE_REGISTRY){document.querySelectorAll('style[data-module="'+id+'"]').forEach(function(s){s.remove();});document.querySelectorAll('script[data-module="'+id+'"]').forEach(function(s){s.remove();});}MODULE_REGISTRY={};MODULE_STATES={};MODULE_LOADED_FILES={};CORE_TOOLS=[SELF_EVOLUTION_TOOL];renderModuleList();loadExternalModules();}
@@ -708,7 +695,16 @@ renderModuleList();updateActiveModuleCount();showToast('Using built-in fallback 
   if(currentHandler&&currentHandler.toString().indexOf("corsproxy")!==-1)return;
 },200);})();
 
-var LineEditor={read:function(s,e,c){var src=getCurrentSource(),lines=src.split("\n"),total=lines.length,start=(s!==undefined&&s!==null)?Math.max(1,parseInt(s)):1,end=(e!==undefined&&e!==null)?Math.min(total,parseInt(e)):total;if(start&&!end)end=start;var sel=lines.slice(start-1,end),r=[];r.push(c?"Source ("+total+" lines)":"Lines "+start+"-"+end+" of "+total);if(c&&start>1)r.push("  ... (lines 1-"+(start-1)+" hidden)");for(var i=0;i<sel.length;i++)r.push((c?"":(start+i).toString().padStart(4," ")+" | ")+sel[i]);if(c&&end<total)r.push("  ... (lines "+(end+1)+"-"+total+" hidden)");return r.join("\n");},edit:function(s,e,c){var src=getCurrentSource(),lines=src.split("\n"),total=lines.length,start=Math.max(1,parseInt(s)),end=Math.min(total,parseInt(e));if(start>end)return null;var nc=lines.slice(0,start-1).concat(c.split("\n")).concat(lines.slice(end)).join("\n");updateLiveSource(nc);return{newCode:nc};},insert:function(n,c){var lines=getCurrentSource().split("\n"),ln=Math.min(Math.max(1,parseInt(n)),lines.length+1),nc=lines.slice(0,ln-1).concat(c.split("\n")).concat(lines.slice(ln-1)).join("\n");updateLiveSource(nc);return{newCode:nc};},del:function(s,e){var lines=getCurrentSource().split("\n"),total=lines.length,start=Math.max(1,parseInt(s)),end=Math.min(total,parseInt(e));if(start>end)return null;var nc=lines.slice(0,start-1).concat(lines.slice(end)).join("\n");updateLiveSource(nc);return{newCode:nc};},append:function(c){var lines=getCurrentSource().split("\n"),nc=lines.concat(c.split("\n")).join("\n");updateLiveSource(nc);return{newCode:nc};},search:function(p,r){var lines=getCurrentSource().split("\n"),res=[];try{var re=r?new RegExp(p):new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"i");for(var i=0;i<lines.length;i++)if(re.test(lines[i]))res.push({line:i+1,text:lines[i]});}catch(ex){return null;}return res;}};
+var LineEditor={
+  _batchBase:[],
+  _startBatch:function(){if(this._batchBase.length===0){this._batchBase=getCurrentSource().split("\n");}},
+  read:function(s,e,c){var src=getCurrentSource(),lines=src.split("\n"),total=lines.length,start=(s!==undefined&&s!==null)?Math.max(1,parseInt(s)):1,end=(e!==undefined&&e!==null)?Math.min(total,parseInt(e)):total;if(start&&!end)end=start;var sel=lines.slice(start-1,end),r=[];r.push(c?"Source ("+total+" lines)":"Lines "+start+"-"+end+" of "+total);if(c&&start>1)r.push("  ... (lines 1-"+(start-1)+" hidden)");for(var i=0;i<sel.length;i++)r.push((c?"":(start+i).toString().padStart(4," ")+" | ")+sel[i]);if(c&&end<total)r.push("  ... (lines "+(end+1)+"-"+total+" hidden)");return r.join("\n");},
+  edit:function(s,e,c){this._startBatch();var lines=this._batchBase.slice();var start=Math.max(1,parseInt(s)),end=Math.min(lines.length,parseInt(e));if(start>end)return null;var nc=lines.slice(0,start-1).concat(c.split("\n")).concat(lines.slice(end)).join("\n");updateLiveSource(nc);return{newCode:nc};},
+  insert:function(n,c){this._startBatch();var lines=this._batchBase.slice();var ln=Math.min(Math.max(1,parseInt(n)),lines.length+1);var nc=lines.slice(0,ln-1).concat(c.split("\n")).concat(lines.slice(ln-1)).join("\n");updateLiveSource(nc);return{newCode:nc};},
+  del:function(s,e){this._startBatch();var lines=this._batchBase.slice();var total=lines.length,start=Math.max(1,parseInt(s)),end=Math.min(total,parseInt(e));if(start>end)return null;var nc=lines.slice(0,start-1).concat(lines.slice(end)).join("\n");updateLiveSource(nc);return{newCode:nc};},
+  append:function(c){var lines=getCurrentSource().split("\n"),nc=lines.concat(c.split("\n")).join("\n");updateLiveSource(nc);return{newCode:nc};},
+  search:function(p,r){var lines=getCurrentSource().split("\n"),res=[];try{var re=r?new RegExp(p):new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"i");for(var i=0;i<lines.length;i++)if(re.test(lines[i]))res.push({line:i+1,text:lines[i]});}catch(ex){return null;}return res;}
+};
 
 var FileManager={
   getNextVersion:function(filename){if(!currentChatId)return 1;var files=ChatPad._getFilesForChat(currentChatId);var maxVer=0;
@@ -772,10 +768,6 @@ function undoLastWrite(){if(undoLastWriteFlag)return;undoLastWriteFlag=true;try{
     var b=document.getElementById("undoBtn");if(b){if(evolutionUndoStack.length===0){b.style.color="#6b7280";b.title="Undo last evolution write";}else{b.title="Undo: "+evolutionUndoStack[evolutionUndoStack.length-1].description;}}showToast("Undid: "+e.description);ChatPad.render();}return;}
   updateLiveSource(e.code);var b=document.getElementById("undoBtn");if(b){if(evolutionUndoStack.length===0){b.style.color="#6b7280";b.title="Undo last evolution write";}else{b.title="Undo: "+evolutionUndoStack[evolutionUndoStack.length-1].description;}}showToast("Undid: "+e.description);ChatPad.render();}finally{undoLastWriteFlag=false;}}
 
-// ===== v7 FIX: read ALWAYS returns getCurrentSource (main source), not a file. =====
-// ===== set_target_file loads file into LIVE_SOURCE so line edits can target it. =====
-// ===== write_file/write call updateLiveSource so line edits work on the written file. =====
-// ===== read_file calls updateLiveSource so it becomes the target for line edits. =====
 function handleEvolveSelfLineAction(args){var a=args.action;
   if(a==="set_target_file"){
     var fn=args.target_filename;
@@ -800,11 +792,9 @@ function handleEvolveSelfLineAction(args){var a=args.action;
     var inChatPad=ChatPad._getFilesForChat(currentChatId).some(function(f){return f.filename===fn;});
     if(inChatPad)return"**\U0001f4c4 `"+fn+"`** — **"+total+" lines** (already in ChatPad panel). Use `read_lines` with `start_line`/`end_line` to inspect specific ranges.";
     ChatPad.addCodeFile(content,fn,"Read: "+fn);
-    updateLiveSource(content);
     var preview=lines.slice(0,10).join("\n");
     return"**\U0001f4c4 Spawned:** `"+fn+"` — **"+total+" lines** (added to ChatPad). Preview (first 10 lines):\n\n```\n"+preview+(total>10?"\n... ("+(total-10)+" more lines in panel)":"")+"\n```";
   }
-// v8: 'read' spawns source as a ChatPad file instead of dumping into chat (saves tokens)
   if(a==="read"){
     var src=getCurrentSource(),lines=src.split("\n"),total=lines.length,desc=args.description||"Read source code";
     var fn="chatseed.html";
@@ -828,14 +818,13 @@ function handleEvolveSelfLineAction(args){var a=args.action;
     if(args.content==="deep"){out.push("","**Functions:**");for(var i=0;i<lines.length;i++){var m=lines[i].match(/function\s+(\w+)/);if(m)out.push("- `"+m[1]+"()` at line "+(i+1));}}
     return out.join("\n");
   }
-  // v6 FIX: Accept both new_code and content
   if(a==="write_file"&&(args.new_code||args.content)){
     var code=args.new_code||args.content;
     var fn=args.target_filename||args.new_filename||"unnamed.txt";
     var desc=args.description||"Write file";
     var verFn=FileManager.writeFile(fn,code,desc);
     if(verFn)pushUndo(verFn,getCurrentSource(),desc,true);
-    updateLiveSource(code); // Make this file the editable target for line edits
+    updateLiveSource(code);
     return"**Written:** `"+verFn+"` (now the active target for editing)\n"+desc;
   }
   if(a==="read_lines")return LineEditor.read(args.start_line,args.end_line,true);
@@ -844,16 +833,15 @@ function handleEvolveSelfLineAction(args){var a=args.action;
   if(a==="delete_lines"){var r=LineEditor.del(args.start_line,args.end_line);if(!r)return"Invalid range";pushUndo(args.new_filename||"chatseed-edited.html",getCurrentSource(),args.description||"Delete",false);ChatPad.addCodeFile(r.newCode,args.new_filename||"chatseed-edited.html",args.description||"Deleted lines "+args.start_line+"-"+args.end_line);return"**Deleted:** Lines "+args.start_line+"-"+args.end_line+".";}
   if(a==="append_lines"){var r=LineEditor.append(args.content);pushUndo(args.new_filename||"chatseed-edited.html",getCurrentSource(),args.description||"Append",false);ChatPad.addCodeFile(r.newCode,args.new_filename||"chatseed-edited.html",args.description||"Appended content");return"**Appended:** Content added.";}
   if(a==="search_code"){var res=LineEditor.search(args.pattern,args.is_regex);if(res===null)return"Invalid pattern";if(!res.length)return"No matches";var msg="**Search results for:** `"+args.pattern+"`\n\nFound "+res.length+" match"+(res.length!==1?"es":"")+":\n";for(var i=0;i<res.length;i++)msg+="`"+(""+res[i].line).padStart(4," ")+"` | "+res[i].text.replace(/\t/g,"  ")+"\n";return msg;}
-  // v6 FIX: Accept both new_code and content
   if(a==="write_source"&&(args.new_code||args.content)){
     var code=args.new_code||args.content;
+    if(code.length<100)return"**Rejected:** write_source content too short ("+code.length+" chars, minimum 100). Use write_file for small snippets.";
     pushUndo(args.new_filename||"chatseed-source.html",getCurrentSource(),args.description||"Write source",false);
     var fn=args.new_filename||"chatseed-source.html";
     ChatPad.addCodeFile(code,fn,args.description||"Write source");
     updateLiveSource(code);
     return"**Source Updated:** `"+fn+"`";
   }
-  // v6 FIX: Accept both new_code and content
   if(a==="write"&&(args.new_code||args.content)){
     var code=args.new_code||args.content;
     var fn=args.new_filename||args.target_filename||"chatseed-written.html";
@@ -863,7 +851,6 @@ function handleEvolveSelfLineAction(args){var a=args.action;
     updateLiveSource(code);
     return"**Written (versioned):** `"+verFn+"` (now the active target for editing)";
   }
-  // v6 FIX: Accept both new_code and content
   if(a==="refactor"&&(args.new_code||args.content)){
     var code=args.new_code||args.content;
     var fn=args.new_filename||"chatseed-refactored.html";
@@ -892,7 +879,7 @@ startStreamingBubble();
 while(true){var rd=await reader.read();if(rd.done)break;buf+=decoder.decode(rd.value,{stream:true});var lines=buf.split("\n");buf=lines.pop()||"";for(var li=0;li<lines.length;li++){var line=lines[li];if(line.indexOf("data: ")!==0)continue;var json=line.slice(6).trim();if(!json||json==="[DONE]")continue;try{var chunk=JSON.parse(json);var d=(chunk.choices&&chunk.choices[0])?(chunk.choices[0].delta||{}):{};if(d.content){fullContent+=d.content;if(!rt)rt=setTimeout(function(){rt=null;updateStreamingContent(renderMarkdown(fullContent));},30);}if(d.tool_calls){for(var tci=0;tci<d.tool_calls.length;tci++){var tc=d.tool_calls[tci],idx=tc.index||0;if(!toolCalls[idx]){toolCalls[idx]={index:idx,id:tc.id||("tc_"+Date.now()+"_"+idx),type:"function",function:{name:"",arguments:""}};toolCallOrder.push(idx);}if(tc.function){if(tc.function.name)toolCalls[idx].function.name+=tc.function.name;if(tc.function.arguments)toolCalls[idx].function.arguments+=tc.function.arguments;}}}}catch(ex){}}}
 if(rt){clearTimeout(rt);rt=null;}if(fullContent&&streamBodyEl)updateStreamingContent(renderMarkdown(fullContent));removeStreamingBubble();
 var consolidatedCalls=[];for(var oi=0;oi<toolCallOrder.length;oi++){var idx=toolCallOrder[oi],tc=toolCalls[idx];if(tc)consolidatedCalls.push({id:tc.id,type:"function",function:{name:tc.function.name,arguments:tc.function.arguments}});}
-if(consolidatedCalls.length>0){var tcMsg={role:"assistant",content:fullContent||null,tool_calls:consolidatedCalls,timestamp:getTimeStr()};chat.messages.push(tcMsg);chat.updatedAt=new Date().toISOString();var tcEl=createMessageElement(tcMsg);if(tcEl)container.appendChild(tcEl);
+if(consolidatedCalls.length>0){LineEditor._batchBase=[];var tcMsg={role:"assistant",content:fullContent||null,tool_calls:consolidatedCalls,timestamp:getTimeStr()};chat.messages.push(tcMsg);chat.updatedAt=new Date().toISOString();var tcEl=createMessageElement(tcMsg);if(tcEl)container.appendChild(tcEl);
 for(var tci=0;tci<consolidatedCalls.length;tci++){var tc=consolidatedCalls[tci],args;try{args=JSON.parse(tc.function.arguments);}catch(ex){showToast("Failed to parse tool args");continue;}
 try{var moduleResult=await ModuleSystem.handleToolCall(tc.function.name,args,tc.id);if(moduleResult!==null){var toolContent=typeof moduleResult==="string"?moduleResult:JSON.stringify(moduleResult);chat.messages.push({role:"tool",tool_call_id:tc.id,content:toolContent,timestamp:getTimeStr()});var toolEl=createMessageElement({role:"tool",tool_call_id:tc.id,content:toolContent,timestamp:getTimeStr()});if(toolEl)container.appendChild(toolEl);}
 else if(tc.function.name==="evolve_self"){var lineResult=handleEvolveSelfLineAction(args);if(lineResult!==null){chat.messages.push({role:"tool",tool_call_id:tc.id,content:lineResult,timestamp:getTimeStr()});var toolEl=createMessageElement({role:"tool",tool_call_id:tc.id,content:lineResult,timestamp:getTimeStr()});if(toolEl)container.appendChild(toolEl);}
@@ -902,7 +889,7 @@ catch(terr){var errMsg="Error: "+terr.message;chat.messages.push({role:"tool",to
 removeStepBar();saveConversations();updateTokenDisplay();continue;}
 else if(fullContent){var finalMsg={role:"assistant",content:fullContent,timestamp:getTimeStr()};chat.messages.push(finalMsg);chat.updatedAt=new Date().toISOString();var el=createMessageElement(finalMsg);if(el)container.appendChild(el);removeStepBar();saveConversations();updateTokenDisplay();break;}
 else{try{var sysP2=getSystemPrompt(),md2=ModuleSystem.getToolDescriptions(),ctx2=md2?"\n\nModule tools: "+md2:"";var am2=[];if(sysP2||ctx2)am2.push({role:"system",content:(sysP2||"You are ChatSeed.")+ctx2});for(var i=0;i<chat.messages.length;i++)am2.push(chat.messages[i]);var fb=await fetch("https://openrouter.ai/api/v1/chat/completions",{method:"POST",headers:{"Authorization":"Bearer "+API_KEY,"Content-Type":"application/json"},body:JSON.stringify({model:selectedModelId||"openai/gpt-4o",messages:am2,tools:CORE_TOOLS.length>0?CORE_TOOLS:undefined,tool_choice:"auto",stream:false})});if(!fb.ok)throw Error("FB "+fb.status);var fd=await fb.json(),fm=fd.choices&&fd.choices[0]?fd.choices[0].message:null;
-if(fm&&fm.tool_calls&&fm.tool_calls.length){var ftm={role:"assistant",content:fm.content||null,tool_calls:fm.tool_calls,timestamp:getTimeStr()};chat.messages.push(ftm);var fte=createMessageElement(ftm);if(fte)container.appendChild(fte);
+if(fm&&fm.tool_calls&&fm.tool_calls.length){LineEditor._batchBase=[];var ftm={role:"assistant",content:fm.content||null,tool_calls:fm.tool_calls,timestamp:getTimeStr()};chat.messages.push(ftm);var fte=createMessageElement(ftm);if(fte)container.appendChild(fte);
 for(var fi=0;fi<fm.tool_calls.length;fi++){var ft=fm.tool_calls[fi],fa;try{fa=JSON.parse(ft.function.arguments);}catch(ex){continue;}
 var mr=await ModuleSystem.handleToolCall(ft.function.name,fa,ft.id);
 if(mr!==null){var ct=typeof mr==="string"?mr:JSON.stringify(mr);chat.messages.push({role:"tool",tool_call_id:ft.id,content:ct,timestamp:getTimeStr()});var fel=createMessageElement({role:"tool",tool_call_id:ft.id,content:ct,timestamp:getTimeStr()});if(fel)container.appendChild(fel);}
