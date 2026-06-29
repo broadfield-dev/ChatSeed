@@ -1,35 +1,25 @@
-// ===== ChatSeed File Handling Module v2 =====
-// THREE separate buffers (no more LIVE_SOURCE pollution):
-//
-//   APP_SOURCE      – Immutable. The original app HTML/JS captured once at startup.
-//   SCRATCH_BUFFER  – Mutable. Holds the content of whichever file is being edited.
-//   SCRATCH_TARGET  – String or null. Which ScratchPad filename is in SCRATCH_BUFFER.
-//                     null means SCRATCH_BUFFER currently holds APP_SOURCE (default view).
-//
-// Rule: set_target_file copies a ScratchPad file INTO SCRATCH_BUFFER and sets
-//       SCRATCH_TARGET to that filename. When SCRATCH_TARGET is null, SCRATCH_BUFFER
-//       is a copy of APP_SOURCE (viewing source). Operations on SCRATCH_BUFFER never
-//       touch APP_SOURCE. write_file saves SCRATCH_BUFFER to ScratchPad (or writes
-//       new content directly). read reads from SCRATCH_BUFFER (never auto-writes to
-//       ScratchPad). File operations (edit_lines, insert_lines, delete_lines, etc.)
-//       always operate on SCRATCH_BUFFER.
+// v18 - PATCHED: No more hardcoded filenames in read/write_source actions + _currentTargetFile respected
+// v17 - PATCHED: No more hardcoded filenames in line edit handlers
+// Line edits (edit/insert/delete/append) now write to the active target
+// instead of creating random "chatseed-edited.html" files
+// BOTH args.new_code AND args.content are supported
 
 (function() {
   'use strict';
 
-  // ===== GLOBAL REFERENCES =====
+  // Global reference holders (set by the host HTML)
   var _refs = {};
   function dep(name) {
-    if (!_refs[name]) _refs[name] = window[name] || null;
+    if (!_refs[name]) {
+      _refs[name] = window[name] || null;
+    }
     return _refs[name];
   }
 
-  // ===== THREE DISTINCT BUFFERS =====
-  window.APP_SOURCE = null;              // Immutable – captured once at startup
-  window.SCRATCH_BUFFER = null;          // Mutable – working content for editing
-  window.SCRATCH_TARGET = null;          // null = viewing app source, string = editing that ScratchPad file
-  window._currentTargetFile = null;      // Alias for SCRATCH_TARGET (backward compat)
-  window.CLEAN_SOURCE_CACHE = null;      // Cached clean version of APP_SOURCE
+  // ===== SHARED STATE =====
+  window._currentTargetFile = null;
+  window.LIVE_SOURCE = null;
+  window.CLEAN_SOURCE_CACHE = null;
   window.evolutionUndoStack = [];
   window.undoLastWriteFlag = false;
 
@@ -41,7 +31,6 @@
     d.textContent = str;
     return d.innerHTML;
   }
-
   function safeRenderHTML(html, allowSafeTags) {
     try {
       if (typeof DOMPurify !== "undefined") {
@@ -67,56 +56,6 @@
     }
   }
 
-  function stripBleedingCSS(html) {
-    return html.replace(/<style>[^<]*?--tw-border-spacing-x[^<]*?<\/style>\s*/gi, '');
-  }
-
-  // ===== INITIAL CAPTURE OF APP SOURCE =====
-  function captureAppSource() {
-    var raw = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
-    raw = raw.replace(/<div id="chatHistory"[^>]*>[\s\S]*?<\/div><\/div><div class="left-sidebar-footer/,
-      '<div id="chatHistory" class="flex-1 overflow-auto px-2 space-y-1"></div><div class="left-sidebar-footer');
-    raw = raw.replace(/(<div id="messages"[^>]*>)[\s\S]*?(<\/div>)/, '$1$2');
-    raw = stripBleedingCSS(raw);
-    window.APP_SOURCE = raw;
-    window.CLEAN_SOURCE_CACHE = raw;
-    // SCRATCH_BUFFER starts as a copy of APP_SOURCE
-    window.SCRATCH_BUFFER = raw;
-    window.SCRATCH_TARGET = null;
-    window._currentTargetFile = null;
-  }
-
-  // ===== BUFFER ACCESSORS =====
-  window.getActiveBuffer = function() {
-    return window.SCRATCH_BUFFER || window.APP_SOURCE || "";
-  };
-
-  window.getBufferLabel = function() {
-    if (window.SCRATCH_TARGET) {
-      return "Editing file: `" + window.SCRATCH_TARGET + "`";
-    }
-    return "Viewing app source";
-  };
-
-  window.setBufferContent = function(content, targetFile) {
-    window.SCRATCH_BUFFER = content;
-    window.SCRATCH_TARGET = targetFile || null;
-    window._currentTargetFile = targetFile || null;
-  };
-
-  window.resetBufferToSource = function() {
-    window.SCRATCH_BUFFER = window.APP_SOURCE;
-    window.SCRATCH_TARGET = null;
-    window._currentTargetFile = null;
-  };
-
-  // Legacy aliases
-  window.getCurrentSource = window.getActiveBuffer;
-  window.updateLiveSource = function(content) {
-    window.SCRATCH_BUFFER = content;
-  };
-  window.stripBleedingCSS = stripBleedingCSS;
-
   // ===== FILE STATUS CONTEXT =====
   window.fileStatusContext = function() {
     var RS = window.RightSidebar;
@@ -124,17 +63,15 @@
     var files = RS._getFilesForChat(window.currentChatId);
     var count = files.length;
     var activeInfo = "";
-    var bufferLines = (window.SCRATCH_BUFFER || "").split("\n").length;
-
-    if (window.SCRATCH_TARGET) {
-      var f = window.FileManager.getFileByName(window.SCRATCH_TARGET);
+    if (window._currentTargetFile) {
+      var f = FileManager.getFileByName(window._currentTargetFile);
       if (f) {
-        activeInfo = "📂 **Editing:** `" + window.SCRATCH_TARGET + "` (v" + (f.version || 1) + ", " + bufferLines + " lines) | **" + count + " file" + (count !== 1 ? "s" : "") + "** in ScratchPad";
+        activeInfo = "📂 **Editing:** `" + window._currentTargetFile + "` (v" + (f.version || 1) + ", " + f.content.split("\n").length + " lines) | **" + count + " file" + (count !== 1 ? "s" : "") + "** in ScratchPad";
       } else {
-        activeInfo = "⚠️ **Editing:** `" + window.SCRATCH_TARGET + "` (" + bufferLines + " lines, modified) | **" + count + " file" + (count !== 1 ? "s" : "") + "** in ScratchPad";
+        activeInfo = "⚠️ **Editing:** `" + window._currentTargetFile + "` (no longer in ScratchPad)";
       }
     } else {
-      activeInfo = "📂 **Viewing:** app source (" + bufferLines + " lines) | **" + count + " file" + (count !== 1 ? "s" : "") + "** in ScratchPad";
+      activeInfo = "📂 **Editing:** source buffer (" + window.getCurrentSource().split("\n").length + " lines) | **" + count + " file" + (count !== 1 ? "s" : "") + "** in ScratchPad";
     }
     var fileList = count > 0
       ? " Use `set_target_file` to switch, `read_file` to view, `list_files` to browse, `write_file` to save a new version."
@@ -142,7 +79,36 @@
     return activeInfo + fileList;
   };
 
-  // ===== RIGHT SIDEBAR (ScratchPad) =====
+  // ===== SOURCE CAPTURE =====
+  function captureCleanSource() {
+    var raw = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+    raw = raw.replace(/<div id="chatHistory"[^>]*>[\s\S]*?<\/div><\/div><div class="left-sidebar-footer/,
+      '<div id="chatHistory" class="flex-1 overflow-auto px-2 space-y-1"></div><div class="left-sidebar-footer');
+    raw = raw.replace(/(<div id="messages"[^>]*>)[\s\S]*?(<\/div>)/, '$1$2');
+    raw = raw.replace(/<style>[^<]*?--tw-border-spacing-x[^<]*?<\/style>\s*/gi, '');
+    window.CLEAN_SOURCE_CACHE = raw;
+    window.LIVE_SOURCE = raw;
+  }
+
+  window.stripBleedingCSS = function(html) {
+    return html.replace(/<style>[^<]*?--tw-border-spacing-x[^<]*?<\/style>\s*/gi, '');
+  };
+  window.getCurrentSource = function() {
+    if (window.LIVE_SOURCE) return window.stripBleedingCSS(window.LIVE_SOURCE);
+    if (window.CLEAN_SOURCE_CACHE) return window.stripBleedingCSS(window.CLEAN_SOURCE_CACHE);
+    var raw = "<!DOCTYPE html>\n" + document.documentElement.outerHTML;
+    raw = window.stripBleedingCSS(raw);
+    window.LIVE_SOURCE = raw;
+    window.CLEAN_SOURCE_CACHE = raw;
+    return window.LIVE_SOURCE;
+  };
+  window.updateLiveSource = function(nc) {
+    var c = window.stripBleedingCSS(nc);
+    window.LIVE_SOURCE = c;
+    window.CLEAN_SOURCE_CACHE = c;
+  };
+
+  // ===== RIGHT SIDEBAR (ScratchPad file management) =====
   window.RightSidebar = {
     _files: [],
     _order: [],
@@ -167,17 +133,25 @@
       return this._files.filter(function(f) { return f.chatId === cid && f.filename === fn; });
     },
 
-    uploadFile: function() { document.getElementById("fileInput").click(); },
+    uploadFile: function() {
+      document.getElementById("fileInput").click();
+    },
 
     addCodeFile: function(code, filename, description) {
       var chatId = window.currentChatId;
       if (!chatId) return null;
       var fileId = "cp_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6);
       var fd = {
-        id: fileId, chatId: chatId, filename: filename,
-        content: code, type: "text/code", size: code.length,
-        description: description || "", addedAt: Date.now(),
-        updatedAt: Date.now(), version: 1
+        id: fileId,
+        chatId: chatId,
+        filename: filename,
+        content: code,
+        type: "text/code",
+        size: code.length,
+        description: description || "",
+        addedAt: Date.now(),
+        updatedAt: Date.now(),
+        version: 1
       };
       this._files.push(fd);
       this._order.push(fileId);
@@ -205,19 +179,16 @@
       var idx = -1;
       for (var i = 0; i < this._files.length; i++) {
         if (this._files[i].id === fileId && this._files[i].chatId === window.currentChatId) {
-          idx = i; break;
+          idx = i;
+          break;
         }
       }
       if (idx === -1) return;
-      var removedFilename = this._files[idx].filename;
       this._files.splice(idx, 1);
       var oidx = this._order.indexOf(fileId);
       if (oidx !== -1) this._order.splice(oidx, 1);
       if (this._active === fileId) {
         this._active = this._order.length > 0 ? this._order[this._order.length - 1] : null;
-      }
-      if (window.SCRATCH_TARGET === removedFilename) {
-        window.resetBufferToSource();
       }
       var storageMode = window.storageMode || "localStorage";
       var DB = window.DB;
@@ -246,7 +217,10 @@
 
     clearAll: function() {
       var files = this._getFilesForChat(window.currentChatId);
-      if (files.length === 0) { if (window.showToast) window.showToast("No files to clear"); return; }
+      if (files.length === 0) {
+        if (window.showToast) window.showToast("No files to clear");
+        return;
+      }
       var showConfirm = window.showConfirmDialog;
       if (showConfirm) {
         showConfirm("Remove all files from this chat's scratchpad?", function(confirmed) {
@@ -263,40 +237,56 @@
       if (this._getFileById(fileId)) { this._active = fileId; this.render(); }
     },
 
-    toggle: function() { if (this._visible) this.hide(); else this.show(); },
+    toggle: function() {
+      if (this._visible) this.hide();
+      else this.show();
+    },
+
     show: function() {
       this._visible = true;
       var el = document.getElementById("rightSidebar");
       var t = document.getElementById("rightSidebarToggle");
       if (window.innerWidth < 1024) {
-        el.classList.remove("collapsed"); el.classList.add("open");
+        el.classList.remove("collapsed");
+        el.classList.add("open");
         var backdrop = document.getElementById("rsBackdrop");
         if (backdrop) backdrop.classList.add("show");
-      } else { el.classList.remove("collapsed"); }
+      } else {
+        el.classList.remove("collapsed");
+      }
       if (t) t.classList.add("open");
     },
+
     hide: function() {
       this._visible = false;
       var el = document.getElementById("rightSidebar");
       var t = document.getElementById("rightSidebarToggle");
       if (window.innerWidth < 1024) {
-        el.classList.remove("open"); el.classList.add("collapsed");
+        el.classList.remove("open");
+        el.classList.add("collapsed");
         var backdrop = document.getElementById("rsBackdrop");
         if (backdrop) backdrop.classList.remove("show");
-      } else { el.classList.add("collapsed"); }
+      } else {
+        el.classList.add("collapsed");
+      }
       if (t) t.classList.remove("open");
     },
 
     downloadFile: function(fid) {
-      var f = this._getFileById(fid); if (!f) return;
+      var f = this._getFileById(fid);
+      if (!f) return;
       var blob = new Blob([f.content], { type: (f.type || "text/plain") + ";charset=utf-8" });
       var url = URL.createObjectURL(blob);
-      var a = document.createElement("a"); a.href = url; a.download = f.filename; a.click();
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = f.filename;
+      a.click();
       setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
     },
 
     copyFile: function(fid) {
-      var f = this._getFileById(fid); if (!f) return;
+      var f = this._getFileById(fid);
+      if (!f) return;
       navigator.clipboard.writeText(f.content).then(function() {
         if (window.showToast) window.showToast("Copied: " + f.filename);
       });
@@ -324,7 +314,10 @@
       var versions = this._getFilesForChat(window.currentChatId).filter(function(f) {
         return f.filename === fn || f.filename.match(new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\./g, '\\.') + '\\.v\\d+' + ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i'));
       });
-      if (versions.length <= 1) { if (window.showToast) window.showToast("Only one version of this file"); return; }
+      if (versions.length <= 1) {
+        if (window.showToast) window.showToast("Only one version of this file");
+        return;
+      }
       var dd = document.createElement("div");
       dd.id = dropdownId;
       dd.className = "rs-version-dropdown show";
@@ -359,9 +352,6 @@
       if (!f) { if (window.showToast) window.showToast("File not found"); return; }
       this._active = fid;
       this.render();
-      if (window.SCRATCH_TARGET === f.filename) {
-        window.SCRATCH_BUFFER = f.content;
-      }
       if (window.showToast) window.showToast("Switched to " + f.filename + " v" + (f.version || 1));
       if (this._versionDropdownOpen) {
         var old = document.getElementById(this._versionDropdownOpen);
@@ -370,7 +360,61 @@
       }
     },
 
-    loadForChat: function(chatId) { /* unchanged from original */ },
+    loadForChat: function(chatId) {
+      var self = this;
+      if (!self._loadGen) self._loadGen = {};
+      self._loadGen[chatId] = (self._loadGen[chatId] || 0) + 1;
+      var gen = self._loadGen[chatId];
+      self._files = self._files.filter(function(f) { return f.chatId !== chatId; });
+      self._order = self._order.filter(function(id) {
+        return self._files.some(function(f) { return f.id === id; });
+      });
+      if (self._active && !self._getFileById(self._active))
+        self._active = self._order.length > 0 ? self._order[self._order.length - 1] : null;
+      var storageMode = window.storageMode || "localStorage";
+      var DB = window.DB;
+      if (storageMode === 'localStorage') {
+        try {
+          var key = "chatpad_files_" + chatId;
+          var s = localStorage.getItem(key);
+          if (s) {
+            var p = JSON.parse(s);
+            p.forEach(function(pf) {
+              pf.chatId = chatId;
+              if (!pf.id) pf.id = "cp_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6);
+              var ex = self._files.some(function(f) { return f.id === pf.id || (f.filename === pf.filename && f.addedAt === pf.addedAt); });
+              if (!ex) {
+                self._files.push(pf);
+                if (self._order.indexOf(pf.id) === -1) self._order.push(pf.id);
+              }
+            });
+          }
+        } catch (ex) {}
+      }
+      if (DB && DB._ready) {
+        DB.getChatFiles(chatId).then(function(dbFiles) {
+          if (window.currentChatId !== chatId || self._loadGen[chatId] !== gen) return;
+          dbFiles.forEach(function(df) {
+            if (typeof df.id === "number" || (df.id && String(df.id).match(/^\d+$/))) {
+              df.id = "cp_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6);
+            }
+            if (df.version === undefined) df.version = 1;
+            var ex = self._files.some(function(f) { return f.id === df.id || (f.filename === df.filename && f.addedAt === df.addedAt); });
+            if (!ex) {
+              if (!df.id) df.id = "cp_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6);
+              df.chatId = chatId;
+              self._files.push(df);
+              if (self._order.indexOf(df.id) === -1) self._order.push(df.id);
+            }
+          });
+          self.render();
+        }).catch(function() {
+          if (window.currentChatId === chatId && self._loadGen[chatId] === gen) self.render();
+        });
+      } else {
+        self.render();
+      }
+    },
 
     render: function() {
       var tabBar = document.getElementById("rsTabBar");
@@ -387,16 +431,23 @@
         var fc = chatFiles.length;
         countLabel.textContent = fc > 0 ? String(fc) : "0";
         var toggleBtn = document.getElementById("rightSidebarToggle");
-        if (fc > 0) { countLabel.style.color = "#6ee7b7"; if (toggleBtn) toggleBtn.style.color = "#6ee7b7"; }
-        else { countLabel.style.color = "#9ca3af"; if (toggleBtn) toggleBtn.style.color = "#9ca3af"; }
+        if (fc > 0) {
+          countLabel.style.color = "#6ee7b7";
+          if (toggleBtn) toggleBtn.style.color = "#6ee7b7";
+        } else {
+          countLabel.style.color = "#9ca3af";
+          if (toggleBtn) toggleBtn.style.color = "#9ca3af";
+        }
       }
       if (orderIds.length === 0) {
         if (empty) empty.style.display = "flex";
         if (preview) preview.classList.remove("active");
         if (preview) preview.style.display = "none";
-        tabBar.innerHTML = ''; return;
+        tabBar.innerHTML = '';
+        return;
       }
       if (empty) empty.style.display = "none";
+      // Tabs
       var tabHtml = '<span class="rs-add-tab" onclick="window.RightSidebar.uploadFile()" title="Upload file"><i class="fas fa-plus"></i></span>';
       for (var i = 0; i < orderIds.length; i++) {
         var fid = orderIds[i];
@@ -412,51 +463,61 @@
         else if (ext === "md" || ext === "txt") icon = "fa-file-lines";
         else if (ext === "py") icon = "fa-file-python";
         else if (ext === "svg") icon = "fa-file-image";
-        var sn = f.filename.length > 22 ? f.filename.substring(0,19)+"..." : f.filename;
+        var sn = f.filename.length > 22 ? f.filename.substring(0, 19) + "..." : f.filename;
         var escapedFn = f.filename.replace(/"/g, "&quot;");
         var escapedFnAttr = f.filename.replace(/'/g, "\\'");
-        tabHtml += '<div class="rs-tab'+(isActive?' active':'')+'" onclick="window.RightSidebar.setActive(\''+fid+'\')" title="'+escapedFn+'">'+
-          '<i class="fas '+icon+' rs-tab-icon"></i>'+
-          '<span class="rs-tab-name">'+sn+'</span>'+
-          '<span class="rs-tab-ver" onclick="event.stopPropagation();window.RightSidebar.showVersionDropdown(\''+escapedFnAttr+'\',this)" title="Versions">v'+(f.version||1)+'</span>'+
-          '<span class="rs-tab-close" onclick="event.stopPropagation();window.RightSidebar.removeFile(\''+fid+'\')">✕</span></div>';
+        tabHtml += '<div class="rs-tab' + (isActive ? ' active' : '') + '" onclick="window.RightSidebar.setActive(\'' + fid + '\')" title="' + escapedFn + '">' +
+          '<i class="fas ' + icon + ' rs-tab-icon"></i>' +
+          '<span class="rs-tab-name">' + sn + '</span>' +
+          '<span class="rs-tab-ver" onclick="event.stopPropagation();window.RightSidebar.showVersionDropdown(\'' + escapedFnAttr + '\',this)" title="Versions">v' + (f.version || 1) + '</span>' +
+          '<span class="rs-tab-close" onclick="event.stopPropagation();window.RightSidebar.removeFile(\'' + fid + '\')">✕</span></div>';
       }
       tabBar.innerHTML = tabHtml;
+      // Preview
       var activeFile = this._getFileById(this._active);
       if (!activeFile || activeFile.chatId !== window.currentChatId) {
-        if (chatFiles.length > 0) { this._active = chatFiles[chatFiles.length-1].id; activeFile = chatFiles[chatFiles.length-1]; }
-        else { if (preview) preview.style.display = "none"; return; }
+        if (chatFiles.length > 0) {
+          this._active = chatFiles[chatFiles.length - 1].id;
+          activeFile = chatFiles[chatFiles.length - 1];
+        } else {
+          if (preview) preview.style.display = "none";
+          return;
+        }
       }
-      if (preview) { preview.style.display = "flex"; preview.classList.add("active"); }
+      if (preview) {
+        preview.style.display = "flex";
+        preview.classList.add("active");
+      }
       var content = activeFile.content || "";
       var lines = content.split("\n");
       var maxLines = Math.min(lines.length, 500);
       var ln = "";
-      for (var i = 0; i < maxLines; i++) ln += "<span>"+(i+1)+"</span>";
-      var dc = content.substring(0,30000).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      for (var i = 0; i < maxLines; i++) ln += "<span>" + (i + 1) + "</span>";
+      var dc = content.substring(0, 30000).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       var cl = dc.split("\n");
       var ch = "";
-      for (var i = 0; i < cl.length && i < maxLines; i++) ch += "<span>"+cl[i]+"\n</span>";
-      if (lines.length > maxLines) ch += '<span style="color:#4b5563;display:block;padding:4px 0">... '+(lines.length - maxLines)+' more lines</span>';
-      var fmtSize = window.formatBytes ? window.formatBytes(activeFile.size) : activeFile.size+" B";
-      var escapedFn = activeFile.filename.replace(/</g,"&lt;");
-      var escapedFnAttr = activeFile.filename.replace(/'/g,"\\'");
+      for (var i = 0; i < cl.length && i < maxLines; i++) ch += "<span>" + cl[i] + "\n</span>";
+      if (lines.length > maxLines)
+        ch += '<span style="color:#4b5563;display:block;padding:4px 0">... ' + (lines.length - maxLines) + ' more lines</span>';
+      var fmtSize = window.formatBytes ? window.formatBytes(activeFile.size) : activeFile.size + " B";
+      var escapedFn = activeFile.filename.replace(/</g, "&lt;");
+      var escapedFnAttr = activeFile.filename.replace(/'/g, "\\'");
       if (preview) {
-        preview.innerHTML = '<div class="rs-preview-header">'+
-          '<div class="rs-file-info">'+
-          '<span style="color:#6ee7b7">'+escapedFn+' <span class="rs-tab-ver" style="font-size:.55rem;cursor:pointer" onclick="window.RightSidebar.showVersionDropdown(\''+escapedFnAttr+'\',this)">v'+(activeFile.version||1)+'</span></span>'+
-          '<span class="rs-line-count">'+lines.length+' lines</span>'+
-          '<span style="color:#4b5563">'+fmtSize+'</span></div>'+
-          '<div class="rs-actions">'+
-          '<button onclick="window.RightSidebar.downloadFile(\''+activeFile.id+'\')" title="Download"><i class="fas fa-download"></i></button>'+
-          '<button onclick="window.RightSidebar.copyFile(\''+activeFile.id+'\')" title="Copy"><i class="fas fa-copy"></i></button>'+
-          '<button class="rs-del" onclick="window.RightSidebar.removeFile(\''+activeFile.id+'\')" title="Remove"><i class="fas fa-times"></i></button></div></div>'+
-          '<div class="rs-preview-body"><pre><span class="rs-line-nums">'+ln+'</span><span class="rs-code-content">'+ch+'</span></pre></div>';
+        preview.innerHTML = '<div class="rs-preview-header">' +
+          '<div class="rs-file-info">' +
+          '<span style="color:#6ee7b7">' + escapedFn + ' <span class="rs-tab-ver" style="font-size:.55rem;cursor:pointer" onclick="window.RightSidebar.showVersionDropdown(\'' + escapedFnAttr + '\',this)">v' + (activeFile.version || 1) + '</span></span>' +
+          '<span class="rs-line-count">' + lines.length + ' lines</span>' +
+          '<span style="color:#4b5563">' + fmtSize + '</span></div>' +
+          '<div class="rs-actions">' +
+          '<button onclick="window.RightSidebar.downloadFile(\'' + activeFile.id + '\')" title="Download"><i class="fas fa-download"></i></button>' +
+          '<button onclick="window.RightSidebar.copyFile(\'' + activeFile.id + '\')" title="Copy"><i class="fas fa-copy"></i></button>' +
+          '<button class="rs-del" onclick="window.RightSidebar.removeFile(\'' + activeFile.id + '\')" title="Remove"><i class="fas fa-times"></i></button></div></div>' +
+          '<div class="rs-preview-body"><pre><span class="rs-line-nums">' + ln + '</span><span class="rs-code-content">' + ch + '</span></pre></div>';
       }
     }
   };
 
-  // ===== FILE MANAGER =====
+  // ===== FILE MANAGER (versioned writes) =====
   window.FileManager = {
     getNextVersion: function(filename) {
       if (!window.currentChatId) return 1;
@@ -491,14 +552,23 @@
       }
       return names;
     },
-    readFile: function(filename) { var f = this.getFileByName(filename); return f ? f.content : null; },
+    readFile: function(filename) {
+      var f = this.getFileByName(filename);
+      if (!f) return null;
+      return f.content;
+    },
     writeFile: function(filename, content, description) {
       if (!window.currentChatId) return null;
       var existing = this.getFileByName(filename);
       var nextVer = this.getNextVersion(filename);
       if (existing) {
         var extMatch = filename.match(/(\.[^.]+)$/);
-        var vfn = extMatch ? filename.replace(/(\.[^.]+)$/, '.v' + nextVer + '$1') : filename + '.v' + nextVer;
+        var vfn;
+        if (extMatch) {
+          vfn = filename.replace(/(\.[^.]+)$/, '.v' + nextVer + '$1');
+        } else {
+          vfn = filename + '.v' + nextVer;
+        }
         existing.filename = vfn;
         existing.version = existing.version || 1;
         var oidx = window.RightSidebar._order.indexOf(existing.id);
@@ -520,8 +590,10 @@
   window.pushUndo = function(fn, sc, desc, isFileWrite) {
     window.evolutionUndoStack.push({
       filename: (window.FileManager.getVersionedBasename ? window.FileManager.getVersionedBasename(fn) : fn),
-      code: sc, description: desc || "Evolution",
-      timestamp: Date.now(), isFileWrite: !!isFileWrite
+      code: sc,
+      description: desc || "Evolution",
+      timestamp: Date.now(),
+      isFileWrite: !!isFileWrite
     });
     if (window.evolutionUndoStack.length > 50) window.evolutionUndoStack.shift();
     var b = document.getElementById("undoBtn");
@@ -534,7 +606,8 @@
     try {
       if (window.evolutionUndoStack.length === 0) {
         var b = document.getElementById("undoBtn");
-        if (b) { b.style.color = "#6b7280"; b.title = "Nothing to undo"; } return;
+        if (b) { b.style.color = "#6b7280"; b.title = "Nothing to undo"; }
+        return;
       }
       var e = window.evolutionUndoStack.pop();
       if (e.isFileWrite) {
@@ -544,9 +617,12 @@
           var extMatch = e.filename.match(/(\.[^.]+)$/);
           var ext = extMatch ? extMatch[0] : '';
           var escapedBase = e.filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\./g, '\\.');
-          var backupRegex = ext
-            ? new RegExp('^' + escapedBase + '\\.v\\d+' + ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$')
-            : new RegExp('^' + escapedBase + '\\.v\\d+$');
+          var backupRegex;
+          if (ext) {
+            backupRegex = new RegExp('^' + escapedBase + '\\.v\\d+' + ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$');
+          } else {
+            backupRegex = new RegExp('^' + escapedBase + '\\.v\\d+$');
+          }
           var backupFiles = files.filter(function(f) { return f.filename.match(backupRegex); });
           if (backupFiles.length > 0) {
             backupFiles.sort(function(a, b) { return (b.version || 1) - (a.version || 1); });
@@ -559,32 +635,35 @@
         var b = document.getElementById("undoBtn");
         if (b) {
           if (window.evolutionUndoStack.length === 0) { b.style.color = "#6b7280"; b.title = "Undo last evolution write"; }
-          else { b.title = "Undo: " + window.evolutionUndoStack[window.evolutionUndoStack.length-1].description; }
+          else { b.title = "Undo: " + window.evolutionUndoStack[window.evolutionUndoStack.length - 1].description; }
         }
         if (window.showToast) window.showToast("Undid: " + e.description);
-        window.RightSidebar.render(); return;
+        window.RightSidebar.render();
+        return;
       }
-      window.SCRATCH_BUFFER = e.code;
+      window.updateLiveSource(e.code);
       var b = document.getElementById("undoBtn");
       if (b) {
         if (window.evolutionUndoStack.length === 0) { b.style.color = "#6b7280"; b.title = "Undo last evolution write"; }
-        else { b.title = "Undo: " + window.evolutionUndoStack[window.evolutionUndoStack.length-1].description; }
+        else { b.title = "Undo: " + window.evolutionUndoStack[window.evolutionUndoStack.length - 1].description; }
       }
       if (window.showToast) window.showToast("Undid: " + e.description);
       window.RightSidebar.render();
-    } finally { window.undoLastWriteFlag = false; }
+    } finally {
+      window.undoLastWriteFlag = false;
+    }
   };
 
-  // ===== LINE EDITOR (operates on SCRATCH_BUFFER only) =====
+  // ===== LINE EDITOR =====
   window.LineEditor = {
     _batchBase: [],
     _startBatch: function() {
       if (this._batchBase.length === 0) {
-        this._batchBase = window.SCRATCH_BUFFER.split("\n");
+        this._batchBase = window.getCurrentSource().split("\n");
       }
     },
     read: function(s, e, c) {
-      var src = window.SCRATCH_BUFFER || "";
+      var src = window.getCurrentSource();
       var lines = src.split("\n");
       var total = lines.length;
       var start = (s !== undefined && s !== null) ? Math.max(1, parseInt(s)) : 1;
@@ -598,23 +677,25 @@
         r.push((c ? "" : (start + i).toString().padStart(4, " ") + " | ") + sel[i]);
       if (c && end < total) r.push("  ... (lines " + (end + 1) + "-" + total + " hidden)");
       return r.join("\n");
-    },
+},
     edit: function(s, e, c) {
       this._startBatch();
       var lines = this._batchBase.slice();
       var start = Math.max(1, parseInt(s));
       var end = Math.min(lines.length, parseInt(e));
       if (start > end) return null;
-      var nc = lines.slice(0, start - 1).concat(c.split("\n")).concat(lines.slice(end)).join("\n");
-      window.SCRATCH_BUFFER = nc;
+      var contentStr = (c === undefined || c === null) ? "" : String(c);
+      var nc = lines.slice(0, start - 1).concat(contentStr.split("\n")).concat(lines.slice(end)).join("\n");
+      window.updateLiveSource(nc);
       return { newCode: nc };
     },
     insert: function(n, c) {
       this._startBatch();
       var lines = this._batchBase.slice();
       var ln = Math.min(Math.max(1, parseInt(n)), lines.length + 1);
-      var nc = lines.slice(0, ln - 1).concat(c.split("\n")).concat(lines.slice(ln - 1)).join("\n");
-      window.SCRATCH_BUFFER = nc;
+      var contentStr = (c === undefined || c === null) ? "" : String(c);
+      var nc = lines.slice(0, ln - 1).concat(contentStr.split("\n")).concat(lines.slice(ln - 1)).join("\n");
+      window.updateLiveSource(nc);
       return { newCode: nc };
     },
     del: function(s, e) {
@@ -625,17 +706,18 @@
       var end = Math.min(total, parseInt(e));
       if (start > end) return null;
       var nc = lines.slice(0, start - 1).concat(lines.slice(end)).join("\n");
-      window.SCRATCH_BUFFER = nc;
+      window.updateLiveSource(nc);
       return { newCode: nc };
     },
     append: function(c) {
-      var lines = window.SCRATCH_BUFFER.split("\n");
-      var nc = lines.concat(c.split("\n")).join("\n");
-      window.SCRATCH_BUFFER = nc;
+      var lines = window.getCurrentSource().split("\n");
+      var contentStr = (c === undefined || c === null) ? "" : String(c);
+      var nc = lines.concat(contentStr.split("\n")).join("\n");
+      window.updateLiveSource(nc);
       return { newCode: nc };
-    },
+},
     search: function(p, r) {
-      var lines = window.SCRATCH_BUFFER.split("\n");
+      var lines = window.getCurrentSource().split("\n");
       var res = [];
       try {
         var re = r ? new RegExp(p) : new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
@@ -649,20 +731,23 @@
   // ===== EVOLVE SELF LINE ACTIONS =====
   window.handleEvolveSelfLineAction = function(args) {
     var a = args.action;
-
-    // --- set_target_file ---
+// --- set_target_file ---
     if (a === "set_target_file") {
       var fn = args.target_filename;
       if (!fn) return "Missing target_filename parameter.\n\n" + window.fileStatusContext();
       var content = window.FileManager.readFile(fn);
       if (content === null)
         return "File not found: `" + fn + "`. Use `list_files` to see available files.\n\n" + window.fileStatusContext();
-      window.SCRATCH_BUFFER = content;
-      window.SCRATCH_TARGET = fn;
+      if (window._currentTargetFile) {
+        var storedContent = window.FileManager.readFile(window._currentTargetFile);
+        if (storedContent !== null && storedContent !== window.getCurrentSource()) {
+          window.FileManager.writeFile(window._currentTargetFile, window.getCurrentSource(), "Auto-saved before switching to " + fn);
+        }
+      }
+      window.updateLiveSource(content);
       window._currentTargetFile = fn;
       return "**Target set:** `" + fn + "` (" + content.split("\n").length + " lines). Line edits will now modify this file.\n\n" + window.fileStatusContext();
     }
-
     // --- list_files ---
     if (a === "list_files") {
       var names = window.FileManager.getAllFilenames();
@@ -671,7 +756,7 @@
       var msg = "## File List (" + names.length + " total)\n\n| # | Filename |\n|---|----------|\n";
       for (var i = 0; i < names.length; i++) {
         var marker = "";
-        if (names[i] === window.SCRATCH_TARGET) marker = " ⬜️ (active target)";
+        if (names[i] === window._currentTargetFile) marker = " ⬜️ (active target)";
         msg += "| " + (i + 1) + " | `" + names[i] + "`" + marker + " |\n";
       }
       msg += "\nUse `read_file` to view a file, `write_file` to create a new versioned copy, or `set_target_file` to make it the active target for line edits.\n\n" + window.fileStatusContext();
@@ -695,26 +780,30 @@
       return "**📄 Spawned:** `" + fn + "` — **" + total + " lines** (added to ScratchPad). Preview (first 10 lines):\n\n```\n" + preview + (total > 10 ? "\n... (" + (total - 10) + " more lines in panel)" : "") + "\n```\n\n" + window.fileStatusContext();
     }
 
-    // --- read (CRITICAL FIX: no longer auto-writes to ScratchPad) ---
+    // --- read (source) ---
     if (a === "read") {
-      var src = window.SCRATCH_BUFFER || window.APP_SOURCE || "";
+      var src = window.getCurrentSource();
       var lines = src.split("\n");
       var total = lines.length;
-      var label = window.getBufferLabel();
-      var out = ["## " + label, "**" + total + " lines total**"];
-      for (var i = 0; i < Math.min(lines.length, 40); i++)
-        out.push(("" + (i + 1)).padStart(4, " ") + " | " + lines[i]);
-      if (lines.length > 40) out.push("... (" + (lines.length - 40) + " more lines)");
-      return out.join("\n") + "\n\n" + window.fileStatusContext();
+      var desc = args.description || "Read source code";
+      var fn = window._currentTargetFile || "chatseed-source.html";
+      var existing = window.RightSidebar._getFilesForChat(window.currentChatId).some(function(f) { return f.filename === fn; });
+      if (existing) window.RightSidebar.removeFileByName(fn);
+      window.RightSidebar.addCodeFile(src, fn, desc);
+      // Also persist to FileManager so read_file can retrieve it
+      if (window.FileManager) {
+        window.FileManager.writeFile(fn, src, desc);
+      }
+      return "**📄 Spawned:** `" + fn + "` (" + total + " lines) added to ScratchPad (right sidebar). Use `read_file` → `" + fn + "` to inspect, `read_lines` to target specific ranges, or `set_target_file` → `" + fn + "` to start editing.\n\n" + window.fileStatusContext();
     }
 
     // --- diff ---
     if (a === "diff") {
-      var src = window.SCRATCH_BUFFER || window.APP_SOURCE || "";
+      var src = window.getCurrentSource();
       var lines = src.split("\n");
       var total = lines.length;
       var pattern = args.content || args.pattern || "";
-      var out = ["## Diff View", "**" + window.getBufferLabel() + " — " + total + " lines**"];
+      var out = ["## Diff View", "**Source:** " + total + " lines"];
       if (pattern) {
         var ctx = 3;
         var found = false;
@@ -724,7 +813,8 @@
             var end = Math.min(lines.length, i + ctx + 1);
             out.push("**Line " + (i + 1) + ":**");
             for (var j = start; j < end; j++) {
-              out.push((j === i ? "→ " : "  ") + ("" + (j + 1)).padStart(4, " ") + " | " + lines[j]);
+              var p = j === i ? "→ " : "  ";
+              out.push(p + ("" + (j + 1)).padStart(4, " ") + " | " + lines[j]);
             }
             found = true;
           }
@@ -740,7 +830,7 @@
 
     // --- analyze ---
     if (a === "analyze") {
-      var src = window.SCRATCH_BUFFER || window.APP_SOURCE || "";
+      var src = window.getCurrentSource();
       var lines = src.split("\n");
       var total = lines.length;
       var chars = src.length;
@@ -753,8 +843,7 @@
         else if (l.indexOf("function") !== -1 || l.indexOf("var ") === 0 || l.indexOf("let ") === 0 || l.indexOf("const ") === 0 || l.indexOf("if") !== -1 || l.indexOf("}") !== -1 || l.indexOf("{") !== -1) js++;
         else if (l.indexOf("color") !== -1 || l.indexOf("margin") !== -1 || l.indexOf("padding") !== -1 || l.indexOf("display") !== -1 || l.indexOf("flex") !== -1 || l.indexOf("border") !== -1 || l.indexOf("background") !== -1) css++;
       }
-      var bufferName = window.SCRATCH_TARGET ? "`" + window.SCRATCH_TARGET + "`" : "app source (current buffer)";
-      var out = ["## Source Analysis", "**Buffer:** " + bufferName, "**Lines:** " + total + " | **Chars:** " + chars, "", "**Breakdown:**", "- Empty: " + empty + " (" + Math.round(empty / total * 100) + "%)", "- HTML: " + html + " lines", "- JS: " + js + " lines", "- CSS: " + css + " lines", "- Comments: " + comments + " lines"];
+      var out = ["## Source Analysis", "**File:** " + (window._currentTargetFile || "current source buffer"), "**Lines:** " + total + " | **Chars:** " + chars, "", "**Breakdown:**", "- Empty: " + empty + " (" + Math.round(empty / total * 100) + "%)", "- HTML: " + html + " lines", "- JS: " + js + " lines", "- CSS: " + css + " lines", "- Comments: " + comments + " lines"];
       if (args.content === "deep") {
         out.push("", "**Functions:**");
         for (var i = 0; i < lines.length; i++) {
@@ -766,20 +855,19 @@
     }
 
     // --- write_file / write / refactor ---
+    // BOTH args.new_code AND args.content are supported here
     if ((a === "write_file" || a === "write" || a === "refactor") && (args.new_code || args.content)) {
       var code = args.new_code || args.content;
       var fn = args.target_filename || args.new_filename || "unnamed.txt";
       var desc = args.description || (a === "refactor" ? "Refactor" : a === "write" ? "Write" : "Write file");
       var wfResult = window.FileManager.writeFile(fn, code, desc);
-      if (wfResult) window.pushUndo(fn, code, desc, true);
-      window.SCRATCH_BUFFER = code;
-      window.SCRATCH_TARGET = fn;
+      if (wfResult) window.pushUndo(fn, window.getCurrentSource(), desc, true);
+      window.updateLiveSource(code);
       window._currentTargetFile = fn;
-      var verInfo = wfResult ? " — v" + wfResult.version + (wfResult.isUpdate ? " (previous version auto-saved as backup)" : "") : "";
-      return "**" + (a === "refactor" ? "Refactored" : "Written") + ":** `" + fn + "`" + verInfo + " and opened in SCRATCH_BUFFER for further editing.\n\n" + window.fileStatusContext();
+      var verInfo = wfResult ? " — v" + wfResult.version + (wfResult.isUpdate ? " (previous version auto-saved as backup)" : "") + " and opened in right sidebar ScratchPad" : "";
+      return "**" + (a === "refactor" ? "Refactored" : "Written") + ":** `" + fn + "`" + verInfo + " (now the active target for editing)\n\n" + window.fileStatusContext();
     }
-
-    // --- read_lines ---
+// --- read_lines ---
     if (a === "read_lines") {
       var linesOut = window.LineEditor.read(args.start_line, args.end_line, true);
       return "```\n" + linesOut + "\n```\n\n" + window.fileStatusContext();
@@ -787,36 +875,60 @@
 
     // --- edit_lines ---
     if (a === "edit_lines") {
-      var r = window.LineEditor.edit(args.start_line, args.end_line, args.content);
-      var target = window.SCRATCH_TARGET || "app source";
-      window.pushUndo(target, window.SCRATCH_BUFFER, args.description || "Edit", false);
-      return "**Edited:** Lines " + args.start_line + "-" + args.end_line + " on " + target + ".\n\n" + window.fileStatusContext();
+      var editContent = args.content || args.new_code;
+      if (editContent === undefined || editContent === null) return "Edit failed: missing content or new_code parameter\n\n" + window.fileStatusContext();
+      var r = window.LineEditor.edit(args.start_line, args.end_line, editContent);
+      if (!r) return "Edit failed\n\n" + window.fileStatusContext();
+      var fn = args.new_filename || window._currentTargetFile || "source.txt";
+      var desc = args.description || "Edited lines " + args.start_line + "-" + args.end_line;
+      var wfResult = window.FileManager.writeFile(fn, r.newCode, desc);
+      if (wfResult) window.pushUndo(fn, r.newCode, desc, true);
+      window.updateLiveSource(r.newCode);
+      window._currentTargetFile = fn;
+      return "**Edited:** Lines " + args.start_line + "-" + args.end_line + " on `" + fn + "` (v" + (wfResult ? wfResult.version : "?") + ")\n\n" + window.fileStatusContext();
     }
 
     // --- insert_lines ---
     if (a === "insert_lines") {
-      var r = window.LineEditor.insert(args.line_number, args.content);
-      if (!r) return "Invalid line\n\n" + window.fileStatusContext();
-      var target = window.SCRATCH_TARGET || "app source";
-      window.pushUndo(target, window.SCRATCH_BUFFER, args.description || "Insert", false);
-      return "**Inserted:** Line " + args.line_number + " on " + target + ".\n\n" + window.fileStatusContext();
+      var insertContent = args.content || args.new_code;
+      if (insertContent === undefined || insertContent === null) return "Insert failed: missing content or new_code parameter\n\n" + window.fileStatusContext();
+      var r = window.LineEditor.insert(args.line_number, insertContent);
+      if (!r) return "Insert failed\n\n" + window.fileStatusContext();
+      var fn = args.new_filename || window._currentTargetFile || "source.txt";
+      var desc = args.description || "Inserted at line " + args.line_number;
+      var wfResult = window.FileManager.writeFile(fn, r.newCode, desc);
+      if (wfResult) window.pushUndo(fn, r.newCode, desc, true);
+      window.updateLiveSource(r.newCode);
+      window._currentTargetFile = fn;
+      return "**Inserted:** Line " + args.line_number + " on `" + fn + "` (v" + (wfResult ? wfResult.version : "?") + ")\n\n" + window.fileStatusContext();
     }
 
     // --- delete_lines ---
     if (a === "delete_lines") {
       var r = window.LineEditor.del(args.start_line, args.end_line);
-      if (!r) return "Invalid range\n\n" + window.fileStatusContext();
-      var target = window.SCRATCH_TARGET || "app source";
-      window.pushUndo(target, window.SCRATCH_BUFFER, args.description || "Delete", false);
-      return "**Deleted:** Lines " + args.start_line + "-" + args.end_line + " on " + target + ".\n\n" + window.fileStatusContext();
+      if (!r) return "Delete failed\n\n" + window.fileStatusContext();
+      var fn = args.new_filename || window._currentTargetFile || "source.txt";
+      var desc = args.description || "Deleted lines " + args.start_line + "-" + args.end_line;
+      var wfResult = window.FileManager.writeFile(fn, r.newCode, desc);
+      if (wfResult) window.pushUndo(fn, r.newCode, desc, true);
+      window.updateLiveSource(r.newCode);
+      window._currentTargetFile = fn;
+      return "**Deleted:** Lines " + args.start_line + "-" + args.end_line + " on `" + fn + "` (v" + (wfResult ? wfResult.version : "?") + ")\n\n" + window.fileStatusContext();
     }
 
     // --- append_lines ---
     if (a === "append_lines") {
-      var r = window.LineEditor.append(args.content);
-      var target = window.SCRATCH_TARGET || "app source";
-      window.pushUndo(target, window.SCRATCH_BUFFER, args.description || "Append", false);
-      return "**Appended:** Content added to " + target + ".\n\n" + window.fileStatusContext();
+      var appendContent = args.content || args.new_code;
+      if (appendContent === undefined || appendContent === null) return "Append failed: missing content or new_code parameter\n\n" + window.fileStatusContext();
+      var r = window.LineEditor.append(appendContent);
+      if (!r) return "Append failed\n\n" + window.fileStatusContext();
+      var fn = args.new_filename || window._currentTargetFile || "source.txt";
+      var desc = args.description || "Appended content";
+      var wfResult = window.FileManager.writeFile(fn, r.newCode, desc);
+      if (wfResult) window.pushUndo(fn, r.newCode, desc, true);
+      window.updateLiveSource(r.newCode);
+      window._currentTargetFile = fn;
+      return "**Appended:** " + appendContent.split("\n").length + " line(s) appended to `" + fn + "` (v" + (wfResult ? wfResult.version : "?") + ")\n\n" + window.fileStatusContext();
     }
 
     // --- search_code ---
@@ -835,11 +947,12 @@
       var code = args.new_code || args.content;
       if (code.length < 100)
         return "**Rejected:** write_source content too short (" + code.length + " chars, minimum 100). Use write_file for small snippets.\n\n" + window.fileStatusContext();
-      window.SCRATCH_BUFFER = code;
-      window.SCRATCH_TARGET = null;
+      var fn = args.new_filename || window._currentTargetFile || "chatseed-source.html";
+      window.pushUndo(fn, window.getCurrentSource(), args.description || "Write source", false);
+      window.RightSidebar.addCodeFile(code, fn, args.description || "Write source");
+      window.updateLiveSource(code);
       window._currentTargetFile = null;
-      window.pushUndo("scratch-source.html", code, args.description || "Write source", false);
-      return "**Buffer Updated:** " + code.split("\n").length + " lines loaded into SCRATCH_BUFFER.\n\n" + window.fileStatusContext();
+      return "**Source Updated:** `" + fn + "`\n\n" + window.fileStatusContext();
     }
 
     return "Unknown action: " + (a || "?") + "\n\n" + window.fileStatusContext();
@@ -875,13 +988,17 @@
             if (storageMode === 'localStorage') {
               try {
                 var key = "chatpad_files_" + chatId;
-                var ex = []; try { var s = localStorage.getItem(key); if (s) ex = JSON.parse(s); } catch (ex) {}
+                var ex = [];
+                try { var s = localStorage.getItem(key); if (s) ex = JSON.parse(s); } catch (ex) {}
                 ex.push(fd);
                 if (ex.length > 50) ex = ex.slice(-50);
                 localStorage.setItem(key, JSON.stringify(ex));
               } catch (ex) {}
-            } else if (DB && DB._ready) { DB.saveChatFile(fd); }
-            self.show(); self.render();
+            } else if (DB && DB._ready) {
+              DB.saveChatFile(fd);
+            }
+            self.show();
+            self.render();
             if (window.renderChatHistory) window.renderChatHistory();
             if (window.showToast) window.showToast("Attached: " + f.name);
           };
@@ -892,11 +1009,11 @@
     });
   });
 
-  // ===== CAPTURE APP SOURCE AFTER DOM READY =====
+  // ===== CAPTURE SOURCE AFTER DOM READY =====
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", captureAppSource);
+    document.addEventListener("DOMContentLoaded", captureCleanSource);
   } else {
-    captureAppSource();
+    captureCleanSource();
   }
 
 })();
