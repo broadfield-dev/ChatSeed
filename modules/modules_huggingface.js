@@ -858,9 +858,12 @@
         };
         const stage = runtime.stage || 'UNKNOWN';
         const sdk = repoInfo.sdk || 'N/A';
-const hardware = (runtime.hardware && typeof runtime.hardware === 'object' ? runtime.hardware.id || runtime.hardware.name || JSON.stringify(runtime.hardware) : runtime.hardware) || 'cpu-basic';
+const hw = typeof runtime.hardware === 'object' && runtime.hardware ? runtime.hardware : {};
+        const hardware = hw.currentPrettyName || hw.current || runtime.hardware || 'cpu-basic';
+        const requestedHardware = hw.requestedPrettyName || hw.requested || hardware;
+        const errorMessage = runtime.errorMessage || '';
         const requestedHardware = (runtime.requestedHardware && typeof runtime.requestedHardware === 'object' ? runtime.requestedHardware.id || runtime.requestedHardware.name || JSON.stringify(runtime.requestedHardware) : runtime.requestedHardware) || hardware;
-        const requestedHardware = runtime.requestedHardware || hardware;
+const visibility = repoInfo.private ? '🔒 Private' : '🌍 Public';
         const visibility = repoInfo.private ? '🔒 Private' : '🌍 Public';
         const likes = repoInfo.likes || 0;
 
@@ -888,7 +891,44 @@ const hardware = (runtime.hardware && typeof runtime.hardware === 'object' ? run
         },
         required: ['repo_id']
       },
-      handler: async function(args) {
+handler: async function(args) {
+        const parts = args.repo_id.split('/');
+        if (parts.length !== 2) return '❌ Invalid repo_id';
+        const [namespace, repo] = parts;
+        try {
+          // Try multiple possible log endpoints
+          const endpoints = [
+            `/api/spaces/${namespace}/${repo}/runtime/logs`,
+            `/api/spaces/${namespace}/${repo}/logs`,
+            `/api/spaces/${namespace}/${repo}/runtime`
+          ];
+          let lastError = null;
+          for (const ep of endpoints) {
+            try {
+              const result = await hfFetch(ep);
+              if (result && typeof result === 'object') {
+                const logsStr = result.logs || result.stdout || result.stderr || result.build || JSON.stringify(result, null, 2);
+                const truncated = logsStr.length > 5000 ? logsStr.slice(-5000) + `\n... (truncated, full: ${logsStr.length} chars)` : logsStr;
+                return [`📋 **Build Logs for** \`${args.repo_id}\``, '\`\`\`', truncated, '\`\`\`'].join('\n');
+              }
+            } catch(e) {
+              lastError = e;
+            }
+          }
+          // Fallback: try fetching the runtime info which may have errorMessage
+          try {
+            const runtime = await hfFetch(`/api/spaces/${namespace}/${repo}/runtime`);
+            if (runtime && runtime.errorMessage) {
+              return `⚠️ **Space has an error:**\n\`\`\`\n${runtime.errorMessage}\n\`\`\``;
+            }
+            return `ℹ️ **Space is** ${runtime.stage || 'unknown'}. No logs available via REST API.\n\n💡 Logs can only be viewed in the HF UI: https://huggingface.co/spaces/${args.repo_id}`;
+          } catch(e2) {
+            throw lastError || e2;
+          }
+        } catch(e) {
+          return `❌ Could not fetch logs: ${e.message}`;
+        }
+      }
         const parts = args.repo_id.split('/');
         if (parts.length !== 2) return '❌ Invalid repo_id';
         const [namespace, repo] = parts;
@@ -1157,7 +1197,45 @@ const hardware = (runtime.hardware && typeof runtime.hardware === 'object' ? run
         },
         required: ['repo_id']
       },
-      handler: async function(args) {
+handler: async function(args) {
+        const parts = args.repo_id.split('/');
+        if (parts.length !== 2) return '❌ Invalid repo_id';
+        const [namespace, repo] = parts;
+        const type = repoTypePath(args.type || 'space');
+        const rev = args.revision || 'main';
+        const path = args.path || '';
+
+        let info = null;
+        // Try paths-info API first
+        try {
+          const body = { paths: [path || '.'], expand: false };
+          info = await hfFetch(`/api/${type}/${namespace}/${repo}/paths-info/${rev}`, {
+            method: 'POST', body: JSON.stringify(body)
+          });
+        } catch(e) {
+          // Fallback to tree API
+          try {
+            info = await hfFetch(`/api/${type}/${namespace}/${repo}/tree/${encodeURIComponent(rev)}/${path ? encodeURIComponent(path) : ''}`);
+          } catch(e2) {
+            // Use siblings from repo info as last resort
+            const repoInfo = await hfFetch(`/api/${type}/${namespace}/${repo}`);
+            if (repoInfo.siblings && repoInfo.siblings.length) {
+              info = repoInfo.siblings.map(s => ({
+                path: s.rfilename,
+                type: 'file',
+                size: s.size || 0
+              }));
+            }
+          }
+        }
+        if (!info || !info.length) {
+          return `📁 No files found at \`${path || '/'}\` in \`${args.repo_id}\``;
+        }
+        // If paths-info returned a single entry for root, it might be the root dir itself
+        if (info.length === 1 && info[0].path === (path || '.') && info[0].type === 'directory') {
+          return `📁 **Empty directory** at \`${args.repo_id}/${path || ''}\``;
+        }
+        const lines = [`📁 **Files in** \`${args.repo_id}/${path || ''}\` (${rev}):`, ''];
         const parts = args.repo_id.split('/');
         if (parts.length !== 2) return '❌ Invalid repo_id';
         const [namespace, repo] = parts;
@@ -1168,7 +1246,7 @@ const hardware = (runtime.hardware && typeof runtime.hardware === 'object' ? run
 // ★ FIX: For root listing, send empty path instead of "/"
         const body = { paths: [path || ''], expand: false };
         const info = await hfFetch(`/api/${type}/${namespace}/${repo}/paths-info/${rev}`, {
-          method: 'POST', body: JSON.stringify(body)
+const truncated = content.length > 16000 ? content.substring(0, 16000) + '\n\n... (truncated, full length: ' + content.length + ' chars)' : content;
         });
         if (!info || !info.length) {
           return `📁 No files found at \`${path || '/'}\` in \`${args.repo_id}\``;
