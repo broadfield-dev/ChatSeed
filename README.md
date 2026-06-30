@@ -168,7 +168,9 @@ The AI can perform complex evolution tasks across **up to 10 steps**, each displ
 ## 🔗 Quick Links (10+)
 
 [Files JS: https://broadfield-dev.github.io/ChatSeed/assets/chatseed-files.js](https://broadfield-dev.github.io/ChatSeed/assets/chatseed-files.js)
+
 [Stylesheet: https://broadfield-dev.github.io/ChatSeed/assets/style.css](https://broadfield-dev.github.io/ChatSeed/assets/style.css)
+
 [Modules: https://broadfield-dev.github.io/ChatSeed/modules](https://broadfield-dev.github.io/ChatSeed/modules)
 
 ---
