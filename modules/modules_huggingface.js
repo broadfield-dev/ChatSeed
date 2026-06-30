@@ -1139,7 +1139,7 @@ handler: async function(args) {
         const [namespace, repo] = parts;
         const type = repoTypePath(args.type || 'space');
         const rev = args.revision || 'main';
-        const path = args.path || '';
+        const path = (args.path || '').replace(/^\/+|\/+$/g, '');
 
         // Use the correct GET /api/{type}/{namespace}/{repo}/tree/{rev}/{path}
         // The old code used POST /api/{type}/{namespace}/{repo}/paths-info/{rev}
@@ -1166,7 +1166,6 @@ handler: async function(args) {
         });
         return lines.join('\n');
       }
-    }
   };
 
   // ─── Module Registration ─────────────────────────────────────────────
