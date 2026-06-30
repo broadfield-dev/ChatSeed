@@ -858,7 +858,8 @@
         };
         const stage = runtime.stage || 'UNKNOWN';
         const sdk = repoInfo.sdk || 'N/A';
-        const hardware = runtime.hardware || 'cpu-basic';
+const hardware = (runtime.hardware && typeof runtime.hardware === 'object' ? runtime.hardware.id || runtime.hardware.name || JSON.stringify(runtime.hardware) : runtime.hardware) || 'cpu-basic';
+        const requestedHardware = (runtime.requestedHardware && typeof runtime.requestedHardware === 'object' ? runtime.requestedHardware.id || runtime.requestedHardware.name || JSON.stringify(runtime.requestedHardware) : runtime.requestedHardware) || hardware;
         const requestedHardware = runtime.requestedHardware || hardware;
         const visibility = repoInfo.private ? '🔒 Private' : '🌍 Public';
         const likes = repoInfo.likes || 0;
