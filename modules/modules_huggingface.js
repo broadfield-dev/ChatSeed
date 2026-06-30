@@ -1133,7 +1133,7 @@
         },
         required: ['repo_id']
       },
-      handler: async function(args) {
+handler: async function(args) {
         const parts = args.repo_id.split('/');
         if (parts.length !== 2) return '❌ Invalid repo_id';
         const [namespace, repo] = parts;
@@ -1146,7 +1146,14 @@
         // which only returns info about the queried path itself, not its children.
         // {path} is a wildcard path parameter in the HF API, so slashes pass through.
         const urlPath = path ? `${rev}/${path}` : rev;
-        const info = await hfFetch(`/api/${type}/${namespace}/${repo}/tree/${urlPath}`);
+        const raw = await hfFetch(`/api/${type}/${namespace}/${repo}/tree/${urlPath}`);
+
+        // The tree endpoint sometimes returns non-JSON content-type headers,
+        // so hfFetch may return raw text instead of parsed JSON. Handle both.
+        let info = raw;
+        if (typeof raw === 'string') {
+          try { info = JSON.parse(raw); } catch(e) { /* will fall through */ }
+        }
 
         if (!info || !Array.isArray(info) || !info.length) {
           return `📁 No files found at \`${path || '/'}\` in \`${args.repo_id}\``;
