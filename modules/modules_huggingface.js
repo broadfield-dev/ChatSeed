@@ -1,10 +1,13 @@
-// HuggingFace Hub Module for ChatSeed v10 — FIXED
+// HuggingFace Hub Module for ChatSeed v11 — FIXED (all syntax errors)
 // ============================================================================
-// FIXES:
-//   1. commitFiles() now uses dynamic repo type path (spaces/models/datasets)
-//      instead of hardcoded /api/models/ — fixes "Repository not found" on uploads
-//   2. hf_delete_file() now uses the same dynamic path for commit endpoint
-//   3. Added proper repo type resolution throughout
+// FIXES in v8:
+//   1. commitFiles() dynamic repo type path (spaces/models/datasets)
+//   2. hf_delete_file() uses same dynamic path
+//   3. hf_space_status — removed duplicate const declarations (lines 864-867)
+//   4. hf_space_logs — removed dangling dead code after closing } (lines 931-943)
+//   5. hf_list_files — removed duplicate 2nd implementation (lines 1238-1261)
+//   6. hf_list_files — removed fragmented truncation line embedded in hfFetch
+//   7. hf_read_file — bumped truncation from 8000 to 16000 chars
 // ============================================================================
 
 (function() {
@@ -73,7 +76,8 @@
     }
     return res.text();
   }
-/** Fetch raw content (for reading file contents from repos, including private ones) */
+
+  /** Fetch raw content (for reading file contents from repos, including private ones) */
   async function hfFetchRaw(path) {
     const url = HF_API_BASE + path;
     const token = getToken();
@@ -858,12 +862,11 @@
         };
         const stage = runtime.stage || 'UNKNOWN';
         const sdk = repoInfo.sdk || 'N/A';
-const hw = typeof runtime.hardware === 'object' && runtime.hardware ? runtime.hardware : {};
+        // ★ FIX #3: Extract hardware from the runtime.hardware object properly
+        const hw = typeof runtime.hardware === 'object' && runtime.hardware ? runtime.hardware : {};
         const hardware = hw.currentPrettyName || hw.current || runtime.hardware || 'cpu-basic';
         const requestedHardware = hw.requestedPrettyName || hw.requested || hardware;
         const errorMessage = runtime.errorMessage || '';
-        const requestedHardware = (runtime.requestedHardware && typeof runtime.requestedHardware === 'object' ? runtime.requestedHardware.id || runtime.requestedHardware.name || JSON.stringify(runtime.requestedHardware) : runtime.requestedHardware) || hardware;
-const visibility = repoInfo.private ? '🔒 Private' : '🌍 Public';
         const visibility = repoInfo.private ? '🔒 Private' : '🌍 Public';
         const likes = repoInfo.likes || 0;
 
@@ -891,12 +894,12 @@ const visibility = repoInfo.private ? '🔒 Private' : '🌍 Public';
         },
         required: ['repo_id']
       },
-handler: async function(args) {
+      handler: async function(args) {
         const parts = args.repo_id.split('/');
         if (parts.length !== 2) return '❌ Invalid repo_id';
         const [namespace, repo] = parts;
         try {
-          // Try multiple possible log endpoints
+          // ★ FIX #4: Try multiple possible log endpoints, fallback gracefully
           const endpoints = [
             `/api/spaces/${namespace}/${repo}/runtime/logs`,
             `/api/spaces/${namespace}/${repo}/logs`,
@@ -925,17 +928,6 @@ handler: async function(args) {
           } catch(e2) {
             throw lastError || e2;
           }
-        } catch(e) {
-          return `❌ Could not fetch logs: ${e.message}`;
-        }
-      }
-        const parts = args.repo_id.split('/');
-        if (parts.length !== 2) return '❌ Invalid repo_id';
-        const [namespace, repo] = parts;
-        try {
-          const logs = await hfFetchText(`/api/spaces/${namespace}/${repo}/logs`);
-          const truncated = logs.length > 3000 ? '... (truncated)\n' + logs.slice(-3000) : logs;
-          return [`📋 **Build Logs for** \`${args.repo_id}\``, '```', truncated, '```'].join('\n');
         } catch(e) {
           return `❌ Could not fetch logs: ${e.message}`;
         }
@@ -1080,9 +1072,9 @@ handler: async function(args) {
               const resultData = JSON.parse(dataStr);
               return [
                 `✅ **Space API Response** from \`${args.repo_id}${apiName}\``,
-                '```json',
+                '\`\`\`json',
                 JSON.stringify(resultData, null, 2),
-                '```'
+                '\`\`\`'
               ].join('\n');
             } catch(e) {
               if (text.includes('event: complete')) {
@@ -1090,7 +1082,7 @@ handler: async function(args) {
                 if (dataMatch) {
                   return [
                     `✅ **Space API Response** from \`${args.repo_id}${apiName}\``,
-                    '```json', dataMatch[1], '```'
+                    '\`\`\`json', dataMatch[1], '\`\`\`'
                   ].join('\n');
                 }
               }
@@ -1142,9 +1134,9 @@ handler: async function(args) {
         const result = await res.json();
         return [
           `🧠 **Inference Result — \`${args.model}\`**`,
-          '```json',
+          '\`\`\`json',
           JSON.stringify(result, null, 2),
-          '```'
+          '\`\`\`'
         ].join('\n');
       }
     },
@@ -1197,7 +1189,7 @@ handler: async function(args) {
         },
         required: ['repo_id']
       },
-handler: async function(args) {
+      handler: async function(args) {
         const parts = args.repo_id.split('/');
         if (parts.length !== 2) return '❌ Invalid repo_id';
         const [namespace, repo] = parts;
@@ -1206,6 +1198,7 @@ handler: async function(args) {
         const path = args.path || '';
 
         let info = null;
+        // ★ FIX #5: Multi-endpoint fallback chain for listing files
         // Try paths-info API first
         try {
           const body = { paths: [path || '.'], expand: false };
@@ -1236,22 +1229,6 @@ handler: async function(args) {
           return `📁 **Empty directory** at \`${args.repo_id}/${path || ''}\``;
         }
         const lines = [`📁 **Files in** \`${args.repo_id}/${path || ''}\` (${rev}):`, ''];
-        const parts = args.repo_id.split('/');
-        if (parts.length !== 2) return '❌ Invalid repo_id';
-        const [namespace, repo] = parts;
-        const type = repoTypePath(args.type || 'space');
-        const rev = args.revision || 'main';
-        const path = args.path || '';
-
-// ★ FIX: For root listing, send empty path instead of "/"
-        const body = { paths: [path || ''], expand: false };
-        const info = await hfFetch(`/api/${type}/${namespace}/${repo}/paths-info/${rev}`, {
-const truncated = content.length > 16000 ? content.substring(0, 16000) + '\n\n... (truncated, full length: ' + content.length + ' chars)' : content;
-        });
-        if (!info || !info.length) {
-          return `📁 No files found at \`${path || '/'}\` in \`${args.repo_id}\``;
-        }
-        const lines = [`📁 **Files in** \`${args.repo_id}/${path || ''}\` (${rev}):`, ''];
         info.forEach(f => {
           const icon = f.type === 'directory' ? '📁' : '📄';
           const size = f.size ? ` (${(f.size / 1024).toFixed(1)} KB)` : '';
@@ -1259,12 +1236,9 @@ const truncated = content.length > 16000 ? content.substring(0, 16000) + '\n\n..
         });
         return lines.join('\n');
       }
-},
+    },
 
-    // ═══════════════════════════════════════════════════════════════════
-    // ★ NEW TOOLS v11 — Added: read_file, file_exists, repo_exists,
-    //   list_commits, move_file
-    // ═══════════════════════════════════════════════════════════════════
+    // ── New Tools v11: read_file, file_exists, repo_exists, list_commits, move_file ──
 
     hf_read_file: {
       description: 'Read the content of a file from ANY HuggingFace repo (Space, Model, or Dataset), including PRIVATE repos.',
@@ -1285,19 +1259,19 @@ const truncated = content.length > 16000 ? content.substring(0, 16000) + '\n\n..
         const rev = args.revision || 'main';
         const filePath = args.path;
 
-// Use /raw/ endpoint — works for both public and private repos
+        // Use /raw/ endpoint — works for both public and private repos
         // Auth header is automatically added for private repos
-        // Using typePath prefix — Spaces need /spaces/namespace/repo/raw/...
         const typePath = repoTypePath(args.type || 'space');
         const rawPath = `/${typePath}/${namespace}/${repo}/raw/${encodeURIComponent(rev)}/${filePath}`;
         const content = await hfFetchRaw(rawPath);
-        const truncated = content.length > 8000 ? content.substring(0, 8000) + '\n\n... (truncated, full length: ' + content.length + ' chars)' : content;
+        // ★ FIX #6: Bumped truncation from 8000 to 16000 chars
+        const truncated = content.length > 16000 ? content.substring(0, 16000) + '\n\n... (truncated, full length: ' + content.length + ' chars)' : content;
         return [
           `📄 **\`${filePath}\`** from \`${args.repo_id}\` (${rev})`,
           '',
-          '```',
+          '\`\`\`',
           truncated,
-          '```',
+          '\`\`\`',
           '',
           `📊 **File info:** ${content.length} chars, ${new Blob([content]).size} bytes`
         ].join('\n');
@@ -1311,7 +1285,8 @@ const truncated = content.length > 16000 ? content.substring(0, 16000) + '\n\n..
         properties: {
           repo_id: { type: 'string', description: 'Repo ID (e.g. "username/my-space")' },
           path: { type: 'string', description: 'File path to check (e.g. "app.py", "requirements.txt")' },
-          revision: { type: 'string', default: 'main', description: 'Branch/revision' }
+          revision: { type: 'string', default: 'main', description: 'Branch/revision' },
+          type: { type: 'string', enum: ['space', 'model', 'dataset'], default: 'space', description: 'Repo type' }
         },
         required: ['repo_id', 'path']
       },
@@ -1321,10 +1296,10 @@ const truncated = content.length > 16000 ? content.substring(0, 16000) + '\n\n..
         const [namespace, repo] = parts;
         const rev = args.revision || 'main';
         const filePath = args.path;
-const typePath = repoTypePath(args.type || 'space');
+        const typePath = repoTypePath(args.type || 'space');
         const { ok, status } = await hfFetchHead(`/${typePath}/${namespace}/${repo}/raw/${encodeURIComponent(rev)}/${filePath}`);
         if (ok) {
-return `✅ **File exists:** \`${filePath}\` in \`${args.repo_id}\` (${rev})`;
+          return `✅ **File exists:** \`${filePath}\` in \`${args.repo_id}\` (${rev})`;
         } else if (status === 404) {
           return `❌ **File not found:** \`${filePath}\` does not exist in \`${args.repo_id}\` (${rev})`;
         } else {
@@ -1484,5 +1459,5 @@ return `✅ **File exists:** \`${filePath}\` in \`${args.repo_id}\` (${rev})`;
     }
   });
 
-  console.log('[HF Module FIXED] Registered with ' + Object.keys(tools).length + ' tools');
+  console.log('[HF Module FIXED v8] Registered with ' + Object.keys(tools).length + ' tools — all syntax errors fixed');
 })();
