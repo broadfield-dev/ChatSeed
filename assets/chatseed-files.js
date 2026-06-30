@@ -1,35 +1,52 @@
-// chatseed-files.js v23 — BOOT-TIME CLEAN CACHE: captures clean DOM before chat data populates
-// Key improvements from v22:
+// chatseed-files.js — BOOT-TIME CLEAN CACHE: captures clean DOM before chat data populates
+// Key improvements:
 // - Automatic boot-time capture of clean source (before chat history/messages fill the DOM)
 // - window._cleanSourceCache stores the snapshot; load_source serves cached copy
 // - Falls back to on-demand captureSource() if boot cache missed
 // - No risk of loading chat-populated DOM into the ScratchPad
+// - No undo system: version history eliminates the need (every write auto-preserves old versions)
+// - Archive mode: files are NEVER deleted, just archived (archived=true)
 (function() {
   'use strict';
 
   var _refs = {};
   function dep(name) { if (!_refs[name]) { _refs[name] = window[name] || null; } return _refs[name]; }
 
-  // ===== STATE =====
+// ===== STATE =====
   window._editTarget = null;    // filename being edited
   window._editContent = null;   // string content being edited
-  window.evolutionUndoStack = [];
-  window.undoLastWriteFlag = false;
   window._cleanSourceCache = null;    // boot-time snapshot of clean DOM (no chat data populated)
-  // ===== SOURCE CAPTURE — DOM-based (FIXED: no fragile regex for nested HTML) =====
+
+  // ===== HTML ENTITY DECODER =====
+  // outerHTML naturally encodes <, >, &, ", ' as &lt;, &gt;, &amp;, &quot;, &#x27;
+  // We need to decode these back so the AI model sees REAL source code chars.
+  function decodeHTMLEntities(str) {
+    var el = document.createElement('textarea');
+    // Decode common entities that outerHTML produces
+    str = str.replace(/&#x27;/g, "'");
+    str = str.replace(/&#39;/g, "'");
+    str = str.replace(/&amp;/g, '&');
+    str = str.replace(/&lt;/g, '<');
+    str = str.replace(/&gt;/g, '>');
+    str = str.replace(/&quot;/g, '"');
+    str = str.replace(/&apos;/g, "'");
+    str = str.replace(/&#(\d+);/g, function(m, code) { return String.fromCharCode(code); });
+    // Use the browser's native decoder for any remaining entities
+    el.innerHTML = str;
+    return el.value;
+  }
+
+  // ===== SOURCE CAPTURE — DOM-based =====
   function captureSource() {
-    // Clone the entire document to avoid mutating live DOM
     var clone = document.documentElement.cloneNode(true);
-    // Remove chat history sidebar content — clear the div, keep structure
     var chatHistory = clone.querySelector('#chatHistory');
     if (chatHistory) { chatHistory.innerHTML = ''; }
-    // Remove messages div content — clear messages, keep the container
     var messages = clone.querySelector('#messages');
     if (messages) { messages.innerHTML = ''; }
-    // Serialize the cleaned clone
     var raw = '<!DOCTYPE html>\n' + clone.outerHTML;
-    // Strip massive tailwind style blocks (regex is safe here — no nesting)
     raw = window.stripBleedingCSS(raw);
+    // Decode HTML entities so the source has real chars, not browser-encoded ones
+    raw = decodeHTMLEntities(raw);
     return raw;
   }
 
@@ -38,16 +55,15 @@
   };
 
   // ===== UTILITY =====
-window.sourceContentSafe = function(text) {
+  window.sourceContentSafe = function(text) {
     if (!text) return text;
-    var safe = text.replace(/&/g, '&amp;')
-                   .replace(/</g, '&lt;')
-                   .replace(/>/g, '&gt;')
-                   .replace(/"/g, '&quot;')
-                   .replace(/'/g, '&#x27;');
-    safe = safe.replace(/\`\`\`/g, '\\`\\`\\`');
+    // Only escape triple backticks to prevent breaking out of markdown code blocks.
+    // Do NOT HTML-encode (< > & " ') — the content is inside ``` code blocks,
+    // so HTML encoding corrupts the data the AI model receives via tool results.
+    var safe = text.replace(/\`\`\`/g, '\\`\\`\\`');
     return safe;
   };
+
   window.codeBlockSafe = function(content, lang) {
     var langAttr = lang ? lang : '';
     var safe = window.sourceContentSafe(content);
@@ -95,9 +111,11 @@ window.sourceContentSafe = function(text) {
     _active: null,
     _visible: false,
 
-    _getFilesForChat: function(cid) {
+    _getFilesForChat: function(cid, includeArchived) {
       if (!cid) return [];
-      return this._files.filter(function(f) { return f.chatId === cid; });
+      var files = this._files.filter(function(f) { return f.chatId === cid; });
+      if (!includeArchived) files = files.filter(function(f) { return !f.archived; });
+      return files;
     },
     _getFileCountForChat: function(cid) {
       return this._getFilesForChat(cid).length;
@@ -146,46 +164,44 @@ window.sourceContentSafe = function(text) {
       return fileId;
     },
 
+    // Archive mode: files are NEVER deleted, just marked archived
     removeFile: function(fileId) {
       var f = this._getFileById(fileId);
       if (!f) { if (window.showToast) window.showToast("File not found"); return; }
-      var chatId = window.currentChatId;
-      this._files = this._files.filter(function(x) { return x.id !== fileId; });
-      this._order = this._order.filter(function(id) { return id !== fileId; });
+      f.archived = true;
       if (this._active === fileId) {
-        var remaining = this._getFilesForChat(chatId);
+        var remaining = this._getFilesForChat(window.currentChatId);
         this._active = remaining.length > 0 ? remaining[remaining.length - 1].id : null;
       }
       if (window._editTarget === f.filename) { window._editTarget = null; window._editContent = null; }
-      var storageMode = window.storageMode || "localStorage";
-      if (storageMode === 'localStorage' && chatId) {
-        try {
-          var key = "chatpad_files_" + chatId;
-          var s = localStorage.getItem(key);
-          if (s) {
-            var ex = JSON.parse(s);
-            ex = ex.filter(function(x) { return x.id !== fileId && x.filename !== f.filename; });
-            localStorage.setItem(key, JSON.stringify(ex));
-          }
-        } catch (ex) {}
-      }
       this.render();
-      if (window.showToast) window.showToast("Removed: " + f.filename);
+      if (window.showToast) window.showToast("Archived: " + f.filename + " (still in version history)");
     },
+
     removeFileByName: function(filename) {
       var chatId = window.currentChatId;
       if (!chatId) return;
-      var files = this._getFilesForChat(chatId).filter(function(f) { return f.filename === filename; });
+      var files = this._getFilesForChat(chatId, true).filter(function(f) { return f.filename === filename; });
       var self = this;
-      files.forEach(function(f) { self.removeFile(f.id); });
+      files.forEach(function(f) {
+        f.archived = true;
+        if (self._active === f.id) {
+          var remaining = self._getFilesForChat(chatId);
+          self._active = remaining.length > 0 ? remaining[remaining.length - 1].id : null;
+        }
+      });
+      self.render();
     },
+
     clearAll: function() {
       var files = this._getFilesForChat(window.currentChatId);
       if (files.length === 0) { if (window.showToast) window.showToast("No files in ScratchPad"); return; }
       window._editTarget = null; window._editContent = null;
-      var ids = files.map(function(f) { return f.id; });
-      ids.forEach(function(id) { window.RightSidebar.removeFile(id); });
-      if (window.showToast) window.showToast("Cleared all files");
+      var self = this;
+      files.forEach(function(f) { f.archived = true; });
+      self._active = null;
+      self.render();
+      if (window.showToast) window.showToast("Archived " + files.length + " files (all in version history)");
     },
 
     setActive: function(fileId) {
@@ -251,7 +267,8 @@ window.sourceContentSafe = function(text) {
       var base = fn.replace(/(\.[^.]+)$/, '');
       var ext = fn.indexOf('.') !== -1 ? fn.match(/\.[^.]+$/)[0] : '';
       var versionFilter = new RegExp('^' + base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\./g, '\\.') + '\\.v\\d+' + ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i');
-      var versions = this._getFilesForChat(window.currentChatId).filter(function(f) {
+      // Include archived files when listing versions (old versions might be archived)
+      var versions = this._getFilesForChat(window.currentChatId, true).filter(function(f) {
         return f.filename === fn || f.filename.match(versionFilter);
       });
       if (versions.length <= 1) { if (window.showToast) window.showToast("Only one version"); return; }
@@ -285,6 +302,8 @@ window.sourceContentSafe = function(text) {
       var f = this._getFileById(fid);
       if (!f) { if (window.showToast) window.showToast("File not found"); return; }
       this._active = fid;
+      // Unarchive when switching to a version so it becomes visible again
+      f.archived = false;
       if (window._editTarget === f.filename) { window._editContent = f.content; }
       this.render();
       if (window.showToast) window.showToast("Switched to " + f.filename + " v" + (f.version || 1));
@@ -381,8 +400,7 @@ window.sourceContentSafe = function(text) {
         tabHtml += '<div class="rs-tab' + (isActive ? ' active' : '') + '" onclick="window.RightSidebar.setActive(\'' + fid + '\')" title="' + escapedFn + '">' +
           '<i class="fas ' + icon + ' rs-tab-icon"></i>' +
           '<span class="rs-tab-name">' + sn + '</span>' +
-          '<span class="rs-tab-ver" onclick="event.stopPropagation();window.RightSidebar.showVersionDropdown(\'' + escapedFnAttr + '\',this)" title="Versions">v' + (f.version || 1) + '</span>' +
-          '<span class="rs-tab-close" onclick="event.stopPropagation();window.RightSidebar.removeFile(\'' + fid + '\')">✕</span></div>';
+          '<span class="rs-tab-ver" onclick="event.stopPropagation();window.RightSidebar.showVersionDropdown(\'' + escapedFnAttr + '\',this)" title="Versions">v' + (f.version || 1) + '</span></div>';
       }
       tabBar.innerHTML = tabHtml;
       var activeFile = this._getFileById(this._active);
@@ -412,8 +430,7 @@ window.sourceContentSafe = function(text) {
           '<span style="color:#4b5563">' + fmtSize + '</span></div>' +
           '<div class="rs-actions">' +
           '<button onclick="window.RightSidebar.downloadFile(\'' + activeFile.id + '\')" title="Download"><i class="fas fa-download"></i></button>' +
-          '<button onclick="window.RightSidebar.copyFile(\'' + activeFile.id + '\')" title="Copy"><i class="fas fa-copy"></i></button>' +
-          '<button class="rs-del" onclick="window.RightSidebar.removeFile(\'' + activeFile.id + '\')" title="Remove" style="color:#ef4444"><i class="fas fa-times"></i></button></div></div>' +
+          '<button onclick="window.RightSidebar.copyFile(\'' + activeFile.id + '\')" title="Copy"><i class="fas fa-copy"></i></button></div></div>' +
           '<div class="rs-preview-body"><pre><span class="rs-line-nums">' + ln + '</span><span class="rs-code-content">' + ch + '</span></pre></div>';
       }
     }
@@ -484,70 +501,6 @@ window.sourceContentSafe = function(text) {
     }
   };
 
-  // ===== UNDO SYSTEM =====
-  window.pushUndo = function(fn, sc, desc, isFileWrite) {
-    window.evolutionUndoStack.push({
-      filename: (window.FileManager.getVersionedBasename ? window.FileManager.getVersionedBasename(fn) : fn),
-      code: sc,
-      description: desc || "Evolution",
-      timestamp: Date.now(),
-      isFileWrite: !!isFileWrite
-    });
-    if (window.evolutionUndoStack.length > 50) window.evolutionUndoStack.shift();
-    var b = document.getElementById("undoBtn");
-    if (b) { b.style.color = "#6ee7b7"; b.title = "Undo: " + (desc || "Last evolution"); }
-  };
-
-  window.undoLastWrite = function() {
-    if (window.undoLastWriteFlag) return;
-    window.undoLastWriteFlag = true;
-    try {
-      if (window.evolutionUndoStack.length === 0) {
-        var b = document.getElementById("undoBtn");
-        if (b) { b.style.color = "#6b7280"; b.title = "Nothing to undo"; }
-        return;
-      }
-      var e = window.evolutionUndoStack.pop();
-      if (e.isFileWrite) {
-        if (window.currentChatId) {
-          var files = window.RightSidebar._getFilesForChat(window.currentChatId);
-          var extMatch = e.filename.match(/(\.[^.]+)$/);
-          var ext = extMatch ? extMatch[0] : '';
-          var escapedBase = e.filename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\./g, '\\.');
-          var backupRegex;
-          if (ext) { backupRegex = new RegExp('^' + escapedBase + '\\.v\\d+' + ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$'); }
-          else { backupRegex = new RegExp('^' + escapedBase + '\\.v\\d+$'); }
-          var backupFiles = files.filter(function(f) { return f.filename.match(backupRegex); });
-          window.RightSidebar.removeFileByName(e.filename);
-          if (backupFiles.length > 0) {
-            backupFiles.sort(function(a, b) { return (b.version || 1) - (a.version || 1); });
-            var best = backupFiles[0];
-            best.filename = e.filename;
-            if (window.RightSidebar._order.indexOf(best.id) === -1) window.RightSidebar._order.push(best.id);
-            if (window._editTarget === e.filename) { window._editContent = best.content; }
-            if (window.showToast) window.showToast("Restored backup: " + e.filename);
-          }
-        }
-        var b = document.getElementById("undoBtn");
-        if (b) {
-          if (window.evolutionUndoStack.length === 0) { b.style.color = "#6b7280"; b.title = "Undo"; }
-          else { b.title = "Undo: " + window.evolutionUndoStack[window.evolutionUndoStack.length - 1].description; }
-        }
-        if (window.showToast) window.showToast("Undid: " + e.description);
-        window.RightSidebar.render();
-        return;
-      }
-      if (window._editContent) { window._editContent = e.code; }
-      var b = document.getElementById("undoBtn");
-      if (b) {
-        if (window.evolutionUndoStack.length === 0) { b.style.color = "#6b7280"; b.title = "Undo"; }
-        else { b.title = "Undo: " + window.evolutionUndoStack[window.evolutionUndoStack.length - 1].description; }
-      }
-      if (window.showToast) window.showToast("Undid: " + e.description);
-      window.RightSidebar.render();
-    } finally { window.undoLastWriteFlag = false; }
-  };
-
   // ===== LINE EDITOR =====
   window.LineEditor = {
     _getLines: function() {
@@ -613,23 +566,24 @@ window.sourceContentSafe = function(text) {
     }
   };
 
-  // ===== EVOLVE SELF LINE ACTIONS (v22 — FIXED DOM-based source capture) =====
+  // ===== EVOLVE SELF LINE ACTIONS =====
   window.handleEvolveSelfLineAction = function(args) {
     var a = args.action;
 
-// --- load_source: serve the clean cached source (captured at boot, before chat data) ---
+// --- load_source: serve the clean cached source (self-contained) ---
     if (a === "load_source") {
-      // Use the cached clean snapshot (captured at boot, before chat data populated)
-      var raw = window._cleanSourceCache || captureSource();
+      // On-demand capture if boot cache is empty (self-contained, no HTML dependency)
+      ensureCleanSource();
+      var raw = window._cleanSourceCache || window._CLEAN_SOURCE || document.documentElement.outerHTML;
       var total = raw.split("\n").length;
       var existing = window.FileManager.getFileByName("chatseed.html");
       if (existing) window.RightSidebar.removeFileByName("chatseed.html");
       window.RightSidebar.addCodeFile(raw, "chatseed.html", "Loaded source: " + total + " lines");
       window._editTarget = "chatseed.html";
       window._editContent = raw;
-      window.pushUndo("chatseed.html", raw, args.description || "Loaded bot source", true);
-      return "**📥 Source loaded:** `chatseed.html` — **" + total + " lines** (from cached clean DOM snapshot — no chat data).\nNow editing `chatseed.html`. Use `list_files` to browse, `read_lines` to inspect, `edit_lines` to make changes.\n\n" + window.fileStatusContext();
+      return "**\uD83D\uDCE5 Source loaded:** \`chatseed.html\` — **" + total + " lines** (loaded your currently running source code from browser memory into ScratchPad).\nNow editing \`chatseed.html\`. Use \`list_files\` to browse, \`read_lines\` to inspect, \`edit_lines\` to make changes.\n\n" + window.fileStatusContext();
     }
+
     // --- set_target_file ---
     if (a === "set_target_file") {
       var fn = args.target_filename;
@@ -650,7 +604,7 @@ window.sourceContentSafe = function(text) {
       var msg = "## File List (" + names.length + " total)\n\n| # | Filename |\n|---|----------|\n";
       for (var i = 0; i < names.length; i++) {
         var marker = "";
-        if (names[i] === window._editTarget) marker = " ⬜️ (active target)";
+        if (names[i] === window._editTarget) marker = " \u2B1C\uFE0F (active target)";
         msg += "| " + (i + 1) + " | `" + names[i] + "`" + marker + " |\n";
       }
       msg += "\nUse `set_target_file <filename>` to start editing, `read_file` to view, `write_file` to save.\n\n" + window.fileStatusContext();
@@ -670,7 +624,7 @@ window.sourceContentSafe = function(text) {
       if (args.start_line && !args.end_line) e = s;
       var sel = allLines.slice(s - 1, e);
       var safeLines = window.lineNumberedSafe(sel, s);
-      var msg = "**📄 `" + fn + "`** — **" + total + " lines** (showing " + s + "-" + e + ")\n\n```\n" + safeLines.join("\n") + "\n```\n\n";
+      var msg = "**\uD83D\uDCC4 `" + fn + "`** — **" + total + " lines** (showing " + s + "-" + e + ")\n\n\`\`\`\n" + safeLines.join("\n") + "\n\`\`\`\n\n";
       return msg + window.fileStatusContext();
     }
 
@@ -691,7 +645,7 @@ window.sourceContentSafe = function(text) {
       var maxShow = Math.min(sel.length, 200);
       var safeLines = window.lineNumberedSafe(sel.slice(0, maxShow), s);
       var label = window._editTarget || "untitled";
-      var msg = "**📄 `" + label + "`** — **" + total + " lines** (showing " + s + "-" + Math.min(s + maxShow - 1, e) + ")\n\n```\n" + safeLines.join("\n") + "\n```\n";
+      var msg = "**\uD83D\uDCC4 `" + label + "`** — **" + total + " lines** (showing " + s + "-" + Math.min(s + maxShow - 1, e) + ")\n\n\`\`\`\n" + safeLines.join("\n") + "\n\`\`\`\n";
       if (sel.length > maxShow) msg += "\n_(showing " + maxShow + " of " + sel.length + ". Use `read_lines start=N end=M` for a range.)_\n";
       msg += "\n**Lines:** " + total + " | **Chars:** " + window._editContent.length;
       return msg + "\n\n" + window.fileStatusContext();
@@ -710,7 +664,7 @@ window.sourceContentSafe = function(text) {
           if (lines[i].indexOf(pattern) !== -1 || (args.is_regex && new RegExp(pattern, "i").test(lines[i]))) {
             var start = Math.max(0, i - ctx), end = Math.min(lines.length, i + ctx + 1);
             out.push("**Line " + (i+1) + ":**");
-            for (var j = start; j < end; j++) out.push((j === i ? "→ " : "  ") + ("" + (j+1)).padStart(4," ") + " | " + window.sourceContentSafe(lines[j]));
+            for (var j = start; j < end; j++) out.push((j === i ? "\u2192 " : "  ") + ("" + (j+1)).padStart(4," ") + " | " + window.sourceContentSafe(lines[j]));
             found = true;
           }
         }
@@ -750,20 +704,19 @@ window.sourceContentSafe = function(text) {
       var fn = args.target_filename || args.new_filename || "unnamed.txt";
       var desc = args.description || (a === "write" ? "Write" : "Write file");
       var wfResult = window.FileManager.writeFile(fn, code, desc);
-      if (wfResult) window.pushUndo(fn, code, desc, true);
       if (fn === window._editTarget) {
         var nf = window.FileManager.getFileByName(fn);
         if (nf) window._editContent = nf.content;
       } else if (!window._editTarget) { window._editTarget = fn; window._editContent = code; }
-      var verInfo = wfResult ? " — v" + wfResult.version + (wfResult.isUpdate ? " (previous version preserved)" : "") + " (in ScratchPad)" : "";
-      return "**Written:** `" + fn + "`" + verInfo + "\n\n" + window.fileStatusContext();
+      var verInfo = wfResult ? " \u2014 v" + wfResult.version + (wfResult.isUpdate ? " (previous version preserved)" : "") + " (in ScratchPad)" : "";
+      return "**Written:** \`" + fn + "\`" + verInfo + "\n\n" + window.fileStatusContext();
     }
 
     // --- read_lines ---
     if (a === "read_lines") {
       if (!window._editContent) return "Nothing loaded.\n\n" + window.fileStatusContext();
       var result = window.LineEditor.readLines(args.start_line, args.end_line);
-      return "Lines " + result.start + "-" + result.end + " of " + result.total + "\n\n```\n" + result.lines.join("\n") + "\n```\n\n" + window.fileStatusContext();
+      return "Lines " + result.start + "-" + result.end + " of " + result.total + "\n\n\`\`\`\n" + result.lines.join("\n") + "\n\`\`\`\n\n" + window.fileStatusContext();
     }
 
     // --- edit_lines ---
@@ -780,8 +733,7 @@ window.sourceContentSafe = function(text) {
       var snapFn = args.new_filename || window._editTarget || "unnamed.txt";
       var desc = args.description || "Edited lines " + sLine + "-" + eLine;
       var wfResult = window.FileManager.writeFile(snapFn, window._editContent, desc);
-      if (wfResult) window.pushUndo(snapFn, window._editContent, desc, true);
-      return "**Edited:** Lines " + sLine + "-" + eLine + " (" + r.oldLength + "→" + r.newLength + ", delta: " + (r.delta > 0 ? "+" : "") + r.delta + ")\n**File:** " + r.totalAfter + " lines. Saved as `" + snapFn + "` v" + (wfResult ? wfResult.version : "?") + ".\n\n" + window.fileStatusContext();
+      return "**Edited:** Lines " + sLine + "-" + eLine + " (" + r.oldLength + "\u2192" + r.newLength + ", delta: " + (r.delta > 0 ? "+" : "") + r.delta + ")\n**File:** " + r.totalAfter + " lines. Saved as \`" + snapFn + "\` v" + (wfResult ? wfResult.version : "?") + ".\n\n" + window.fileStatusContext();
     }
 
     // --- insert_lines ---
@@ -796,8 +748,7 @@ window.sourceContentSafe = function(text) {
       var snapFn = args.new_filename || window._editTarget || "unnamed.txt";
       var desc = args.description || "Inserted at line " + insertLine;
       var wfResult = window.FileManager.writeFile(snapFn, window._editContent, desc);
-      if (wfResult) window.pushUndo(snapFn, window._editContent, desc, true);
-      return "**Inserted:** " + r.inserted + " lines before line " + r.insertLine + " (" + r.totalBefore + "→" + r.totalAfter + ")\nSaved as `" + snapFn + "` v" + (wfResult ? wfResult.version : "?") + ".\n\n" + window.fileStatusContext();
+      return "**Inserted:** " + r.inserted + " lines before line " + r.insertLine + " (" + r.totalBefore + "\u2192" + r.totalAfter + ")\nSaved as \`" + snapFn + "\` v" + (wfResult ? wfResult.version : "?") + ".\n\n" + window.fileStatusContext();
     }
 
     // --- delete_lines ---
@@ -811,8 +762,7 @@ window.sourceContentSafe = function(text) {
       var snapFn = args.new_filename || window._editTarget || "unnamed.txt";
       var desc = args.description || "Deleted lines " + dStart + "-" + dEnd;
       var wfResult = window.FileManager.writeFile(snapFn, window._editContent, desc);
-      if (wfResult) window.pushUndo(snapFn, window._editContent, desc, true);
-      return "**Deleted:** Lines " + r.deletedFrom + "-" + r.deletedTo + " (" + r.deleted + " lines) (" + r.totalBefore + "→" + r.totalAfter + ")\nSaved as `" + snapFn + "` v" + (wfResult ? wfResult.version : "?") + ".\n\n" + window.fileStatusContext();
+      return "**Deleted:** Lines " + r.deletedFrom + "-" + r.deletedTo + " (" + r.deleted + " lines) (" + r.totalBefore + "\u2192" + r.totalAfter + ")\nSaved as \`" + snapFn + "\` v" + (wfResult ? wfResult.version : "?") + ".\n\n" + window.fileStatusContext();
     }
 
     // --- append_lines ---
@@ -825,8 +775,7 @@ window.sourceContentSafe = function(text) {
       var snapFn = args.new_filename || window._editTarget || "unnamed.txt";
       var desc = args.description || "Appended content";
       var wfResult = window.FileManager.writeFile(snapFn, window._editContent, desc);
-      if (wfResult) window.pushUndo(snapFn, window._editContent, desc, true);
-      return "**Appended:** " + r.appended + " lines (" + r.totalBefore + "→" + r.totalAfter + ")\nSaved as `" + snapFn + "` v" + (wfResult ? wfResult.version : "?") + ".\n\n" + window.fileStatusContext();
+      return "**Appended:** " + r.appended + " lines (" + r.totalBefore + "\u2192" + r.totalAfter + ")\nSaved as \`" + snapFn + "\` v" + (wfResult ? wfResult.version : "?") + ".\n\n" + window.fileStatusContext();
     }
 
     // --- search_code ---
@@ -835,9 +784,9 @@ window.sourceContentSafe = function(text) {
       var res = window.LineEditor.search(args.pattern, args.is_regex);
       if (res === null) return "Invalid pattern.\n\n" + window.fileStatusContext();
       if (!res.length) return "No matches.\n\n" + window.fileStatusContext();
-      var msg = "**Search for:** `" + args.pattern + "`\n\n" + res.length + " match" + (res.length !== 1 ? "es" : "") + ":\n";
+      var msg = "**Search for:** \`" + args.pattern + "\`\n\n" + res.length + " match" + (res.length !== 1 ? "es" : "") + ":\n";
       for (var i = 0; i < res.length; i++)
-        msg += "`" + ("" + res[i].line).padStart(4, " ") + "` | " + window.sourceContentSafe(res[i].text.replace(/\t/g, "  ")) + "\n";
+        msg += "\`" + ("" + res[i].line).padStart(4, " ") + "\` | " + window.sourceContentSafe(res[i].text.replace(/\t/g, "  ")) + "\n";
       return msg + "\n" + window.fileStatusContext();
     }
 
@@ -895,9 +844,18 @@ window.sourceContentSafe = function(text) {
     });
   });
 
+// On-demand fallback: called by load_source if boot cache is empty.
+  function ensureCleanSource() {
+    if (!window._cleanSourceCache && !window._CLEAN_SOURCE) {
+      try {
+        window._cleanSourceCache = captureSource();
+        console.log('[chatseed-files] On-demand clean source captured: ' + window._cleanSourceCache.split('\n').length + ' lines');
+      } catch(e) {
+        console.warn('[chatseed-files] On-demand capture also failed:', e);
+      }
+    }
+  }
 // ===== BOOT-TIME CLEAN SOURCE CAPTURE =====
-  // Immediately capture a clean snapshot of the DOM — before any chat data populates.
-  // This ensures load_source always serves the original code, not the filled-in chat version.
   function bootCapture() {
     try {
       window._cleanSourceCache = captureSource();
@@ -907,7 +865,6 @@ window.sourceContentSafe = function(text) {
     }
   }
 
-  // Capture ASAP — on DOMContentLoaded if the page hasn't loaded yet, otherwise immediately
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', bootCapture);
   } else {
