@@ -1141,11 +1141,14 @@
         const rev = args.revision || 'main';
         const path = args.path || '';
 
-        const body = { paths: [path || '/'], expand: false };
-        const info = await hfFetch(`/api/${type}/${namespace}/${repo}/paths-info/${rev}`, {
-          method: 'POST', body: JSON.stringify(body)
-        });
-        if (!info || !info.length) {
+        // Use the correct GET /api/{type}/{namespace}/{repo}/tree/{rev}/{path}
+        // The old code used POST /api/{type}/{namespace}/{repo}/paths-info/{rev}
+        // which only returns info about the queried path itself, not its children.
+        // {path} is a wildcard path parameter in the HF API, so slashes pass through.
+        const urlPath = path ? `${rev}/${path}` : rev;
+        const info = await hfFetch(`/api/${type}/${namespace}/${repo}/tree/${urlPath}`);
+
+        if (!info || !Array.isArray(info) || !info.length) {
           return `📁 No files found at \`${path || '/'}\` in \`${args.repo_id}\``;
         }
         const lines = [`📁 **Files in** \`${args.repo_id}/${path || ''}\` (${rev}):`, ''];
