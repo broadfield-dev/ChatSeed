@@ -17,6 +17,7 @@ window.__CHATSEED_MODULES_MANIFEST = {
     { "id": "fun", "file": "modules_fun.js", "name": "Jokes, Quotes & Fun Facts", "version": "2.0.0" },
     { "id": "youtube", "file": "modules_youtube.js", "name": "YouTube Video Player", "version": "2.0.0" },
     { "id": 'huggingface-hub', "file": 'modules_huggingface.js', "name": 'HuggingFace Hub', "version": "2.0.0" },
+    { "id": 'wiki', "file": 'modules_wiki.js', "name": 'WIKI', "version": "2.0.0" },
 
   ]
 };
