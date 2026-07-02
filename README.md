@@ -10,9 +10,8 @@ ChatSeed is a single-file HTML application that connects to OpenRouter's API to 
 
 ![Screenshot](https://raw.githubusercontent.com/broadfield-dev/ChatSeed/refs/heads/main/assets/1200x628.jpg)
 
-[Live Demo: https://broadfield-dev.github.io/ChatSeed/chatseed-v7-SEO.html](https://broadfield-dev.github.io/ChatSeed/chatseed-v7-SEO.html)
+[Live Demo: https://broadfield-dev.github.io/ChatSeed/chatseed-v10-7-2.html](https://broadfield-dev.github.io/ChatSeed/chatseed-v10-7-2.html)
 
-[Live Demo: https://broadfield-dev.github.io/ChatSeed/chatseed-v10.html](https://broadfield-dev.github.io/ChatSeed/chatseed-v10.html)
 
 ---
 
